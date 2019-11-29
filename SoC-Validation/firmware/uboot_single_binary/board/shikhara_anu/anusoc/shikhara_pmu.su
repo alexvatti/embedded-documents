@@ -1,0 +1,2 @@
+shikhara_pmu.c:10:6:start_perfmon	8	static
+shikhara_pmu.c:35:6:stop_perfmon	8	static

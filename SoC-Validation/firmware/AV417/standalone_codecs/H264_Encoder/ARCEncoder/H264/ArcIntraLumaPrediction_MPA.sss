@@ -1,0 +1,1157 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// ARC International.                                              //
+
+
+
+
+
+#include "ArcSDMTables.h"
+#include "ArcMPC.h"
+#include "defines.h"
+
+
+showstalls
+setw                108
+metaware
+strict
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable IntraLumaPrediction, 6
+
+
+
+//------------------------------------------------------------------------------
+// Global Function Arguments
+p16                 intraValidFlag = i0 // same as chroma
+pubreg              intraValidFlag
+p16                 intra_16x16_mode = i1
+p16                 intraLumaCost = i2
+//                  useWhitening // see declaration below
+
+//------------------------------------------------------------------------------
+// Intra Prediction Common Register Workspace
+vec16               gDCArray0
+vec16               gDCArray1
+// hack column into definiton until .$NAME functionality added to scanMP
+// these will go into vr04
+s16                 gThreshold              : i0
+s16                 gLambda                 : i1
+s16                 gLambdaMult16           : i2
+s16                 gLambdaMult10_30        : i3
+s16                 gBestIntraLumaCost      : i4
+
+// resid_sad's will be located before gBestIntraLumaMode. this only works because gBestIntraLumaMode is
+// defined as in the same lane as gBestIntraLumaCost which is not in the same
+// lane as any of the resid_sad's below which are defined and only used in Calculate4x4SADs
+
+//    // place these first, so that they will all get put in the same vector, as
+//    // scanMP doesn't support a command to do this at presents
+//    // hack column into instruction until .$NAME functionality added to scanMP 
+//    s16                 resid_sad0 : i0
+//    s16                 resid_sad1 : i1
+//    s16                 resid_sad2 : i2
+//    s16                 resid_sad3 : i3
+
+s16                 gUseIntraLumaDCPredOnly : gLambdaMult16 // force to not be in vr04 to avoid stalls
+pubreg              gUseIntraLumaDCPredOnly
+s16                 gUseWhitening           : gLambdaMult10_30
+pubreg              gUseWhitening
+s16                 gBestIntraLumaMode      : gBestIntraLumaCost
+
+
+// only used by GenerateIntra16x16Prediction but define globally to stop
+// it getting overwritten by subroutines
+vec16               dc_prediction
+
+
+
+//------------------------------------------------------------------------------
+// Name:          ConstrainIntraValidFlag
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func ConstrainIntraValidFlag
+    // function arguments
+    //p16                 intraValidFlag = i0 // defined as global for luma and chroma
+    p16                 constIntraPred = i8 // constrained_intra_pred_flag
+    pubreg              constIntraPred
+
+begin
+    p16                 leftMBIntra
+    p16                 aboveMBIntra
+
+    // reset neighbour flags to 1 because we only care about the intra flags if
+    // constrained_intra_pred_flag is set
+    vmovw               'leftMBIntra, 1
+    vmovw               'aboveMBIntra, 1
+
+    // only load the neighbour flags if constrained intra prediction flag is set
+    vld8w.constIntraPred    'leftMBIntra, CirBuf, MPO_LeftMB
+    vld8w.constIntraPred    'aboveMBIntra, CirBuf, MPO_AboveMB
+
+    // check if neighbour flags are intra
+    via.constIntraPred  leftMBIntra, leftMBIntra, MBNF_INTRA
+    via.constIntraPred  aboveMBIntra, aboveMBIntra, MBNF_INTRA
+
+    // clear neighbour bit in intra valid flag if constrained intra pred and
+    // intra are not set
+    via!leftMBIntra     intraValidFlag, intraValidFlag, 2 // zero (clear) left bit (bit 0)
+    via!aboveMBIntra    intraValidFlag, intraValidFlag, 1 // zero (clear) above bit (bit 1)
+
+end
+
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          CalculateDC
+// Purpose:       Calculates the DC value for each 4x4 sub-block of a macroblock
+// Arguments:     prediction_errorPtr = pointer to residual macroblock
+//                dcarrayPtr = pointer to 16 element array to store dc value
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.s CalculateDC
+    // function arguments
+    p16                 prediction_errorPtr = i3
+
+begin
+    // res_Idx0_1 = effects both lanes 0 & 1 (this allows it to be used for the
+    //             divide by 16 at the end, knowing that res_Idx1 will overwrite
+    //             any values from the sumation
+    // res_Idx1 = only effects lane 1
+    vec16               res <* Idx0_1, Idx1> = vr01
+
+    vec16               prediction_error0
+    vec16               prediction_error1
+    vec16               prediction_error2
+    vec16               prediction_error3
+    vec16               prediction_error4
+    vec16               prediction_error5
+    vec16               prediction_error6
+    vec16               prediction_error7
+    vec16               dcarrayTemp0
+    vec16               dcarrayTemp1
+
+    p16                 row
+
+    // setup loop counter
+    // 16 rows total, 4 rows per loop
+    vmovw               'row, (16/4)-1
+
+    // setup result indicies
+    vmovw               'res_Idx0_1, 3 // lane 0 & 1
+    vmovw               'res_Idx1, 2 // lane 1
+
+    // rowLoop start
+label rowLoop
+    
+    // load prediction data for a 4 rows of 4x4 sub-blocks
+    // 4x4 sub-blocks 0 & 1
+    vld128              prediction_error0, prediction_errorPtr, 0
+    vld128              prediction_error1, prediction_errorPtr, 32
+    vld128              prediction_error2, prediction_errorPtr, 64
+    vld128              prediction_error3, prediction_errorPtr, 96
+
+    // 4x4 sub-blocks 2 & 3
+    vld128              prediction_error4, prediction_errorPtr, 16
+    vld128              prediction_error5, prediction_errorPtr, 48
+    vld128              prediction_error6, prediction_errorPtr, 80
+    vld128              prediction_error7, prediction_errorPtr, 112
+
+
+    // add rows to each other, resetting the accumulator on the first one
+    // 4x4 sub-blocks 0 & 1
+    vaddw               dcarrayTemp0, prediction_error0, prediction_error1
+    vaddaw              dcarrayTemp0, prediction_error2, prediction_error3
+
+    // 4x4 sub-blocks 2 & 3
+    vaddw               dcarrayTemp1, prediction_error4, prediction_error5
+    vaddaw              dcarrayTemp1, prediction_error6, prediction_error7
+
+
+    // increament pointer (16 pixels, 2 bytes per pixel, 4 rows)
+    vim                 prediction_errorPtr, prediction_errorPtr, 16*2*4
+
+
+    // sum 4 columns of sub-block into result
+    // 4x4 sub-blocks 0
+    vxsumw.res_Idx0_1   gDCArray0, dcarrayTemp0, 0x0f
+
+    // 4x4 sub-blocks 1
+    vxsumw.res_Idx1     gDCArray0, dcarrayTemp0, 0xf0
+
+
+    // decrement and loop
+    vjd.row             row, .rowLoop
+
+    // delay slots start
+
+    // 4x4 sub-blocks 2
+~   vxsumw.res_Idx0_1   gDCArray1, dcarrayTemp1, 0x0f
+
+    // 4x4 sub-blocks 3
+~   vxsumw.res_Idx1     gDCArray1, dcarrayTemp1, 0xf0
+
+
+    // increament dcarray result indicies (shift left by 2 because we process 4
+    // rows and 4 columns at a time)
+~   vmulw               res, res, 4
+
+    // delay slots end
+
+
+    // for 4x4 sub-blocks 0 & 1, 4 & 5, 8 & 9, 12 & 13 (raster order)
+    // store the sign bit
+    vsubw.f             VZERO, gDCArray0, 0
+
+    // negate values that are negative
+@   mov                 r0, 0xffff
+    vmulw.lt            gDCArray0, gDCArray0, r0
+
+    // generate 4x4 sub-block dc value by dividing the sum by 16 with rounding
+    vasrrw              gDCArray0, gDCArray0, 4
+
+    // negate values that were previously negative at the start
+@   mov                 r0, 0xffff
+    vmulw.lt            gDCArray0, gDCArray0, r0
+
+    // for 4x4 sub-blocks 2 & 3, 6 & 7, 10 & 11, 14 & 15 (raster order)
+    // store the sign bit
+    vsubw.f             VZERO, gDCArray1, 0
+
+
+    // return to caller
+    vjb                 VSTACK, 0
+
+    // delay slots start
+
+    // negate values that are negative
+~@   mov                 r0, 0xffff
+~    vmulw.lt            gDCArray1, gDCArray1, r0
+
+    // generate 4x4 sub-block dc value by dividing the sum by 16 with rounding
+~   vasrrw              gDCArray1, gDCArray1, 4
+
+    // negate values that were previously negative at the start
+~@   mov                 r0, 0xffff
+~   vmulw.lt            gDCArray1, gDCArray1, r0
+
+
+    // store the results
+    // gDCArray0 contains the dc values for the rater numbered 4x4 sub-blocks 0, 1, 4, 5, 8, 9, 12 & 13
+    // gDCArray1 contains the dc values for the rater numbered 4x4 sub-blocks 2, 3, 6, 7, 10, 11, 14 & 15
+    //vst128              gDCArray0, dcarrayPtr, 0
+    //vst128              gDCArray1, dcarrayPtr, 16
+
+    // delay slots end
+
+end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          Calculate4x4SADs
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.s Calculate4x4SADs
+    // function arguments
+    p16                 residualPtr = i3
+    p16                 threshold = i7
+
+begin
+    // return result
+    p16                 sad = i2 // this is used as a synonym for intraLumaCost
+
+    // place these first, so that they will all get put in the same vector, as
+    // scanMP doesn't support a command to do this at presents
+    // hack column into instruction until .$NAME functionality added to scanMP 
+    //s16                 resid_sad0 : i0
+    //s16                 resid_sad1 : i1
+    //s16                 resid_sad2 : i2
+    //s16                 resid_sad3 : i3
+
+    vec16               resid <sad0, sad1, sad2, sad3>
+
+    vec16               coded <flag0, flag1, flag2, flag3>
+
+    p16                 codedFlag
+    p16                 lambdaMult16
+    p16                 sum
+
+    p16                 row
+
+    vec16               residual0
+    vec16               residual1
+    vec16               residual2
+    vec16               residual3
+    vec16               residual4
+    vec16               residual5
+    vec16               residual6
+    vec16               residual7
+
+    vec16               resid_sadTemp0
+    vec16               resid_sadTemp1
+
+    vec16               resid_sadSum
+
+
+    // setup defaults
+    // hack column into instruction until .$NAME functionality added to scanMP 
+    viv.0x04            lambdaMult16, gLambdaMult16
+    vmovw               coded, 0
+    vmovw               'sad, 0
+    vmovw               resid_sadSum, 0
+
+    // setup loop counter
+    // 16 rows total, 4 rows per loop
+    vmovw               'row, (16/4)-1
+
+
+    // rowLoop start
+label rowLoop
+
+    // load prediction data for a row of 4x4 sub-blocks
+    vld128              residual0, residualPtr, 0
+    vld128              residual1, residualPtr, 32
+    vld128              residual2, residualPtr, 64
+    vld128              residual3, residualPtr, 96
+    vld128              residual4, residualPtr, 16
+    vld128              residual5, residualPtr, 48
+    vld128              residual6, residualPtr, 80
+    vld128              residual7, residualPtr, 112
+    
+    // get absolute values
+    vabsw               residual0, residual0
+    vabsw               residual1, residual1
+    vabsw               residual2, residual2
+    vabsw               residual3, residual3
+    vabsw               residual4, residual4
+    vabsw               residual5, residual5
+    vabsw               residual6, residual6
+    vabsw               residual7, residual7
+
+    // calculate 4x4 sads by;
+    // first, adding rows to each other, resetting the accumulator on the first
+    // one
+    // 4x4 sub-blocks 0 & 1
+    vaddw               resid_sadTemp0, residual0, residual1
+    vaddaw              resid_sadTemp0, residual2, residual3
+
+    // 4x4 sub-blocks 2 & 3
+    vaddw               resid_sadTemp1, residual4, residual5
+    vaddaw              resid_sadTemp1, residual6, residual7
+
+    // second, summing 4 columns of sub-block into result
+    // 4x4 sub-blocks 0
+    vxsumw              'resid_sad0, resid_sadTemp0, 0x0f
+
+    // 4x4 sub-blocks 1
+    vxsumw              'resid_sad1, resid_sadTemp0, 0xf0
+
+    // 4x4 sub-blocks 2
+    vxsumw              'resid_sad2, resid_sadTemp1, 0x0f
+
+    // 4x4 sub-blocks 3
+    vxsumw              'resid_sad3, resid_sadTemp1, 0xf0
+
+    // compare sads for all 4x4 subblocks 0, 1, 2 & 3 with threshold
+    // need to explicitly set lane predication until scanMP is fixed
+    vsubw.0x0f.f        VZERO, resid, threshold
+
+
+    // decrement and loop
+    vjd.row             row, .rowLoop
+
+    // delay slots start
+
+    // if any are greater than the threshold then set coded
+//    vtany.0x0f.gt       coded, lambdaMult16
+~   vmivw.gt            coded, lambdaMult16
+
+    // accumulate the 4x4 sub-block sads, assumes resid_sad0, 1, 2 & 3 are all
+    // in the same vector next to each other
+    // need to explicitly set lane predication until scanMP is fixed
+~   vaddw.0x0f          resid_sadSum, resid_sadSum, resid
+
+    // increament pointer (16 pixels, 2 bytes per pixel, 4 rows)
+~   vim                 residualPtr, residualPtr, 16*2*4
+
+    // delay slots end
+
+
+    // return result in i2
+
+    // return to caller
+    vjb                 VSTACK, 0
+
+    // delay slots start
+
+    // calculate final sad by summing each row of 4x4 sub-blocks
+    // hack column into instruction until .$NAME functionality added to scanMP 
+~   vxsumw              'sad, resid_sadSum, 0x0f
+
+    // adjust sad if 4x4 dc sub-block will be coded
+~   viv                 codedFlag, coded
+~   vaddw               'sad, 'sad, codedFlag
+
+    // delay slots end
+
+end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          WhitenResidual_CalculateSAD
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.s WhitenResidual_CalculateSAD
+    // function arguments
+
+begin
+    // need to hack explicit lane number as ScanMP does not yet support defining
+    // p16's to be in the same lane as another p16
+    p16                 intra_16x16_modeOffset = i9 // intra_16x16_mode = i1
+
+    // call CalculateDC
+    vjl                VSTACK, .CalculateDC
+
+    // delay slots start
+
+    // setup arguments for CalculateDC
+~   vmulw               'intra_16x16_modeOffset, 'intra_16x16_mode, (16*16*2) // 2 bytes per pixel
+~   vim                 i3, intra_16x16_modeOffset, SDMOF_IntraPredictionResidsLuma
+
+~   vnop
+    // delay slots end
+
+    // results returned in gDCArray0 & gDCArray1
+
+begin
+    p16                 dcIdx0
+    p16                 dcIdx1
+
+    p16                 prediction_errorPtr
+    p16                 whitePredErrorPtr
+
+    p16                 row
+
+    p16                 dcTerm0
+    p16                 dcTerm1
+    p16                 dcTerm2
+    p16                 dcTerm3
+
+    vec16               prediction_error0
+    vec16               prediction_error1
+    vec16               prediction_error2
+    vec16               prediction_error3
+    vec16               prediction_error4
+    vec16               prediction_error5
+    vec16               prediction_error6
+    vec16               prediction_error7
+
+    vec16               dcVec0
+    vec16               dcVec1
+
+    vec16               whitePredError0
+    vec16               whitePredError1
+    vec16               whitePredError2
+    vec16               whitePredError3
+    vec16               whitePredError4
+    vec16               whitePredError5
+    vec16               whitePredError6
+    vec16               whitePredError7
+
+
+    // setup pointers
+    // possible optimisation is to stiore intra_16x16_modeOffset in intra_16x16_mode, as 
+    // intra_16x16_mode is possibly not needed
+    vmulw               'intra_16x16_modeOffset, 'intra_16x16_mode, (16*16*2) // 2 bytes per pixel
+    vim                 prediction_errorPtr, intra_16x16_modeOffset, SDMOF_IntraPredictionResidsLuma
+
+    vmovw               'whitePredErrorPtr, SDMOF_WhitePredError
+
+    // setup loop counter
+    // 16 rows total, 4 rows per loop
+    // we need to perform 4 rows at a time to match the dc indexing scheme for
+    // the dc array that is generated in CalculateDC
+    vmovw               'row, (16/4)-1
+
+    // setup result indicies
+    vmovw               'dcIdx0, 1 // lane 0
+    vmovw               'dcIdx1, 2 // lane 1
+
+
+    // rowLoop start
+label rowLoop
+
+    // load prediction data for a 4 rows of 4x4 sub-blocks 0, 1, 2 & 3
+    vld128              prediction_error0, prediction_errorPtr, 0
+    vld128              prediction_error1, prediction_errorPtr, 16
+    vld128              prediction_error2, prediction_errorPtr, 32
+    vld128              prediction_error3, prediction_errorPtr, 48
+    vld128              prediction_error4, prediction_errorPtr, 64
+    vld128              prediction_error5, prediction_errorPtr, 80
+    vld128              prediction_error6, prediction_errorPtr, 96
+    vld128              prediction_error7, prediction_errorPtr, 112
+
+    // get dc term for each row of 4x4 sub-blocks
+    viv.dcIdx0          dcTerm0, gDCArray0
+    viv.dcIdx1          dcTerm1, gDCArray0
+    viv.dcIdx0          dcTerm2, gDCArray1
+    viv.dcIdx1          dcTerm3, gDCArray1
+
+    // broadcast dc term across all pixels of each row of each 4x4 sub-block
+    vmivw.0x0f          dcVec0, dcTerm0
+    vmivw.0xf0          dcVec0, dcTerm1
+    vmivw.0x0f          dcVec1, dcTerm2
+    vmivw.0xf0          dcVec1, dcTerm3
+
+    // only update the dc term indicies every other loop, debcuase
+    
+
+
+    // we require 4 dc values from the gDCArray to process each row. however
+    // we only process 2 rows every loop, therefore we only want to update them
+    // every other loop. we do this by comparing the loop counter to even vaules
+    
+
+    // update dc term indicies by shifting left by 2 because we process 4 rows
+    // and 4 columns at a time
+    vmulw               'dcIdx0'dcIdx1, 'dcIdx0'dcIdx1, 4
+
+    // perform whitening on residual
+    vsubw               whitePredError0, prediction_error0, dcVec0
+    vsubw               whitePredError1, prediction_error1, dcVec1
+    vsubw               whitePredError2, prediction_error2, dcVec0
+    vsubw               whitePredError3, prediction_error3, dcVec1
+    vsubw               whitePredError4, prediction_error4, dcVec0
+    vsubw               whitePredError5, prediction_error5, dcVec1
+    vsubw               whitePredError6, prediction_error6, dcVec0
+    vsubw               whitePredError7, prediction_error7, dcVec1
+
+    // store whitened residual
+    vst128              whitePredError0, whitePredErrorPtr, 0
+    vst128              whitePredError1, whitePredErrorPtr, 16
+    vst128              whitePredError2, whitePredErrorPtr, 32
+    vst128              whitePredError3, whitePredErrorPtr, 48
+    vst128              whitePredError4, whitePredErrorPtr, 64
+    vst128              whitePredError5, whitePredErrorPtr, 80
+    vst128              whitePredError6, whitePredErrorPtr, 96
+
+
+    // decrement and loop
+    vjd.row             row, .rowLoop
+
+    // delay slots start
+
+    // store whitened residual
+~   vst128              whitePredError7, whitePredErrorPtr, 112
+
+    // increament pointers (16 pixels, 2 bytes per pixel, 4 rows)
+~   vim                 whitePredErrorPtr, whitePredErrorPtr, 16*2*4
+~   vim                 prediction_errorPtr, prediction_errorPtr, 16*2*4
+
+    // delay slots end
+
+
+end
+
+end
+
+begin
+
+    // call CalculateDC
+    vjl                 VSTACK, .Calculate4x4SADs
+
+    // delay slots start
+
+    // calculate sad
+    // set up arguments for Calculate4x4SADs
+~   vmovw               'i3, SDMOF_WhitePredError
+~   viv.0x01            i7, gThreshold
+
+~   vnop
+    // delay slots end
+
+
+    // sad result returned in i2
+end
+
+begin
+    // return result from Calculate4x4SADs is intraLumaCost
+
+    vec16               sumdc
+    vec16               saddc0
+    vec16               saddc1
+
+
+    // calculate the dc value for the 4x4 sub-block of dc terms by summing all
+    // the dc terms and then dividing by 16 with rounding
+    vaddw               sumdc, gDCArray0, gDCArray1
+    vxsumw.0xff         sumdc, sumdc, 0xff
+    vasrrw              sumdc, sumdc, 4
+
+    // whiten the 4x4 sub-block of dc terms and calculate cost of dc block
+    vsubw               saddc0, gDCArray0, sumdc
+    vabsw               saddc0, saddc0
+    vsubw               saddc1, gDCArray1, sumdc
+    vabsw               saddc1, saddc1
+
+
+    // return to caller
+    vjb                 VSTACK, 0
+
+    // delay slots start
+
+~   vaddw               saddc0, saddc0, saddc1
+~   vxsumw.0xff         saddc0, saddc0, 0xff
+
+    // add cost of dc block to the sad
+~   vaddw               'intraLumaCost, 'intraLumaCost, saddc0
+
+    // delay slots end
+
+
+end
+
+    // return result in i2
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntra16x16Residual
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.s GenerateIntra16x16Residual
+    // function arguments
+
+begin
+    // need to hack explicit lane number as ScanMP does not yet support defining
+    // p16's to be in the same lane as another p16
+    p16                 intra_16x16_modeOffset = i9 // intra_16x16_mode = i1
+
+    p16                 source_ptr
+    p16                 prediction_ptr
+    p16                 prediction_error_ptr
+
+    p16                 row
+
+    vec16               source0
+    vec16               source1
+    vec16               source2
+    vec16               source3
+
+    vec16               prediction0
+    vec16               prediction1
+    vec16               prediction2
+    vec16               prediction3
+
+    vec16               prediction_error0
+    vec16               prediction_error1
+    vec16               prediction_error2
+    vec16               prediction_error3
+
+    // setup arguments for GenerateIntra16x16Residual
+    vim                 source_ptr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y
+    vmulw               'intra_16x16_modeOffset, 'intra_16x16_mode, (16*16) // 1 byte per pixel
+    vim                 prediction_ptr, intra_16x16_modeOffset, SDMOF_IntraPredictionLuma
+    vmulw               'intra_16x16_modeOffset, 'intra_16x16_mode, (16*16*2) // 2 bytes per pixel
+    vim                 prediction_error_ptr, intra_16x16_modeOffset, SDMOF_IntraPredictionResidsLuma
+
+    // setup loop counter
+    // 16 rows total, 2 rows per loop
+    vmovw               'row, (16/2)-1
+
+
+    // rowLoop start
+label rowLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, source_ptr, 0
+    vld64w              source1, source_ptr, 8
+    vld64w              source2, source_ptr, 16
+    vld64w              source3, source_ptr, 24
+
+    // load prediction (8 bits per pixel)
+    vld64w              prediction0, prediction_ptr, 0
+    vld64w              prediction1, prediction_ptr, 8
+    vld64w              prediction2, prediction_ptr, 16
+    vld64w              prediction3, prediction_ptr, 24
+
+    // calculate residual (9 bits stored in 16 bits per pixel)
+    vsubw               prediction_error0, source0, prediction0
+    vsubw               prediction_error1, source1, prediction1
+    vsubw               prediction_error2, source2, prediction2
+    vsubw               prediction_error3, source3, prediction3
+
+    // store residual (16 bits per pixel)
+    vst128              prediction_error0, prediction_error_ptr, 0
+    vst128              prediction_error1, prediction_error_ptr, 16
+    vst128              prediction_error2, prediction_error_ptr, 32
+    vst128              prediction_error3, prediction_error_ptr, 48
+
+    // decrement and loop
+    vjd.row             row, .rowLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 source_ptr, source_ptr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 prediction_ptr, prediction_ptr, 16*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 prediction_error_ptr, prediction_error_ptr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+end
+
+    // return to caller
+    vjb                 VSTACK, 0
+
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntra16x16Prediction
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f GenerateIntra16x16Prediction
+    // function arguments
+    // intraValidFlag = i0
+
+begin // 1
+    p16                 quantValue
+    p16                 thresholdLutPtr
+    p16                 lambdaLutPtr
+    p16                 lambda
+
+    // get quantiser value
+    vld8w               'quantValue, CirBuf, MPO_QuantValue
+
+    // setup global best cost value to max
+@   mov                 r0, 0x7fff
+    vmovw               'gBestIntraLumaCost, r0
+
+    // zero dc_prediction, as it's formed by accumulation
+    vmovw              dc_prediction, 0
+
+    // setup global value pointers
+    vim                 lambdaLutPtr, quantValue, SDMOF_h264_encoder_rd_sad_lambda
+    vim                 thresholdLutPtr, quantValue, SDMOF_h264_encoder_8X8_skip_threshold_multMIN_SKIP_16X16_div32
+
+    // setup global lambda value
+    vld8w               'lambda, lambdaLutPtr, 0
+
+    // setup global threshold value
+    vld8w               'gThreshold, thresholdLutPtr, 0
+    // no need to do  the following as it's included in the lut
+    //vmulw               'gThreshold, 'gThreshold, MIN_SKIP_16X16
+    //vasrw               'gThreshold, 'gThreshold, 5
+
+    // test to see if we have enough time to perform whitening
+    vsubw.f             VZERO, gUseWhitening, 1
+
+    // setup global multiplied lambda values
+    vmivw               'gLambda'gLambdaMult16'gLambdaMult10_30, lambda
+
+    // setup global multiplied lambda values
+    vmulw               'gLambdaMult16, 'gLambdaMult16, 16
+
+    // if so then we do a final adjust of the cost by adding 30 times lambda
+    // otherwise we add 10 times lambda
+    vmulw.eq            'gLambdaMult10_30, 'gLambdaMult10_30, 30
+    vmulw.ne            'gLambdaMult10_30, 'gLambdaMult10_30, 10
+
+end // 1
+
+
+    // vertical prediction (mode = 0)
+label verticalPrediction
+
+begin // 1
+    p16                 aboveOk
+
+    // check if above is valid
+    via                 aboveOk, intraValidFlag, 2
+    vjp!aboveOk         .horizontalPrediction
+
+    // delay slots start
+
+    // shouldn't really allow delay slots to go across scope boundaries as it could
+    // cause a stall in the jump destination, however we are more concerned about
+    // optimising the most commonly occurring case. which in this case is also the
+    // worst case.
+
+~end // 1
+
+~begin // 1
+~   p16                 useIntraLumaDCPredOnly
+
+~   vec16               A_lo
+~   vec16               A_high
+
+    // get intra prediction pixels for A
+~   vld64w              A_lo, FixBuf, MPO_Y_IntraPredPixel + 0
+~   vld64w              A_high, FixBuf, MPO_Y_IntraPredPixel + 8
+
+ ~  vnop
+    // delay slots end
+
+    // can't go in a delay slot
+    // accumulate intra prediction pixels A into dc prediction vector
+    vaddw               dc_prediction, A_lo, A_high
+
+    // check if we are only doing dc prediction
+    viv.{gUseIntraLumaDCPredOnly} useIntraLumaDCPredOnly, gUseIntraLumaDCPredOnly
+    vjp.useIntraLumaDCPredOnly .horizontalPrediction
+
+    // delay slots start
+
+~end // 1
+
+~begin // 1
+~   p16                 row
+
+~   p16                 a_ptr
+~   p16                 A_ptr
+
+~   vec16               a
+~   vec16               A
+
+
+    // load prediction
+~   vld128              A, FixBuf, MPO_Y_IntraPredPixel
+
+    // setup loop counter
+    // 16 rows total, 1 row per loop
+~   vmovw               'row, 16-1
+
+    // setup destination and source pointers
+~   vmovw               'a_ptr, SDMOF_IntraPredictionLuma + (MBIM_H264_Y_VERTICAL * 16*16) // 1 byte per pixel
+    // no need for a source pointer, as the prediction can just be load directly
+    //vim                 A_ptr, FixBuf, MPO_Y_IntraPredPixel
+
+    // delay slots end
+
+    // setup global intra16x16 mode value
+    vmovw               'intra_16x16_mode, MBIM_H264_Y_VERTICAL
+
+
+    // rowLoop start
+label rowLoopVerticalPrediction
+
+    // decrement and loop
+    vjd.row             row, .rowLoopVerticalPrediction
+
+    // delay slots start
+
+    // store prediction
+~   vst128              A, a_ptr, 0
+
+    // increament pointers
+~   vim                 a_ptr, a_ptr, 16 // 16 pixels, 1 byte per pixel, 1 row
+
+~   vnop
+    // delay slots end
+
+end // 1
+
+    // generate residual for whitening
+    vjl                 VSTACK, .GenerateIntra16x16Residual
+    
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+    // whiten residual and calculate sad
+    vjl                 VSTACK, .WhitenResidual_CalculateSAD
+
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+    // compare with best cost and use new value only if better (this preserves
+    // the priority of the mode processing order of 0, 1, 2)
+    vsubw.f             VZERO, 'gBestIntraLumaCost, intraLumaCost
+    vmivw.gt            'gBestIntraLumaCost, intraLumaCost
+    vmovw.gt            'gBestIntraLumaMode, MBIM_H264_Y_VERTICAL
+
+
+    // horizontal prediction (mode = 1)
+label horizontalPrediction
+
+begin // 1
+    p16                 leftOk
+
+    // check if left is valid
+    via                 leftOk, intraValidFlag, 1
+    vjp!leftOk          .dcPrediction
+
+    // delay slots start
+
+    // shouldn't really allow delay slots to go across scope boundaries as it could
+    // cause a stall in the jump destination, however we are more concerned about
+    // optimising the most commonly occurring case. which in this case is also the
+    // worst case.
+
+~end // 1
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// optimised to here from start of function
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+~begin // 1
+~   p16                 row
+
+~   p16                 a_ptr
+~   p16                 E_ptr
+
+~   vec16               a
+~   vec16               E
+
+    // setup global intra16x16 mode value
+~   vmovw               'intra_16x16_mode, MBIM_H264_Y_HORIZONTAL
+
+    // setup destination and source pointers
+~   vmovw               'a_ptr, SDMOF_IntraPredictionLuma + (MBIM_H264_Y_HORIZONTAL * 16*16) // 1 byte per pixel
+~   vim                 E_ptr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + PCB_RECONSTRUCTED_STRIDE-1
+
+    // delay slots end
+
+    // setup loop counter
+    // 16 rows total, 1 row per loop
+    vmovw               'row, 16-1
+
+
+begin // 2 <- 1
+    p16                 ETerm
+
+    // rowLoop start
+label rowLoopHorizontalPrediction
+
+    // load 8 bit prediction
+    vld8w               'ETerm, E_ptr, 0
+
+    // accumulate intra prediction pixel E into dc prediction vector
+    vaddw.0x01          dc_prediction, dc_prediction, ETerm
+
+    // duplicate prediction into both bytes of the 16 bit lanes
+    vmulw               'ETerm, 'ETerm, 0x0101
+    // duplicate prediction into vector register
+    vmivw               E, ETerm
+
+    // decrement and loop
+    vjd.row             row, .rowLoopHorizontalPrediction
+
+    // delay slots start
+
+    // store prediction
+~   vst128              E, a_ptr, 0
+
+    // increament pointers
+~   vim                 a_ptr, a_ptr, 16 // 16 pixels, 1 byte per pixel, 1 row
+~   vim                 E_ptr, E_ptr, PCB_RECONSTRUCTED_STRIDE
+
+    // delay slots end
+
+end // 2 <- 1
+
+end // 1
+
+begin // 1
+    p16                 useIntraLumaDCPredOnly
+
+    // check if we are only doing dc prediction
+    viv.{gUseIntraLumaDCPredOnly} useIntraLumaDCPredOnly, gUseIntraLumaDCPredOnly
+    vjp.useIntraLumaDCPredOnly .dcPrediction
+
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+end // 1
+
+    // generate residual for whitening
+    vjl                 VSTACK, .GenerateIntra16x16Residual
+    
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+    // whiten residual and calculate sad
+    vjl                 VSTACK, .WhitenResidual_CalculateSAD
+
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+    // compare with best cost and use new value only if better (this preserves
+    // the priority of the mode processing order of 0, 1, 2)
+    vsubw.f             VZERO, 'gBestIntraLumaCost, intraLumaCost
+    vmivw.gt            'gBestIntraLumaCost, intraLumaCost
+    vmovw.gt            'gBestIntraLumaMode, MBIM_H264_Y_HORIZONTAL
+
+
+    // dc prediction (mode = 2)
+label dcPrediction
+
+begin // 1
+    p16                 a_ptr
+
+    vec16               intraValidFlagVec
+
+    // setup global intra16x16 mode value
+    vmovw               'intra_16x16_mode, MBIM_H264_Y_DC
+
+    // compare intraValidFlag to see if both above and left are available and
+    // broadcast flag across all lanes
+    vmivw               intraValidFlagVec, intraValidFlag
+    vsubw.0xff.f        VZERO, intraValidFlagVec, 3
+
+    // save result of compare in all the sticky flags
+    vclrstk.0xff.al
+    vsetstk.0xff.eq
+
+
+    // compare intraValidFlag to see if neither above and left are available and
+    // broadcast flag across all lanes
+    vsubw.0xff.f        VZERO, intraValidFlagVec, 0
+
+    // setup source value
+    // if neither above or left are available then use default of 128 (for both
+    // bytes of the lane)
+@   mov                 r0, 0x8080
+    vmovw.0xff.eq       dc_prediction, r0
+
+    // sum all lanes of dc_prediction vector and broadcast across whole vector
+    vxsumw.0xff.ne      dc_prediction, dc_prediction, 0xff
+
+    // if both above and left are available then add rounding of 16 and divide by 32
+    vasrrw.0xff.ne.s    dc_prediction, dc_prediction, 5
+    
+    // if only one of above or left are available then add rounding of 8 and divide by 16
+    vasrrw.0xff.ne!s    dc_prediction, dc_prediction, 4
+
+    // duplicate prediction into both bytes of the 16 bit lanes
+    vmulw.0xff.ne       dc_prediction, dc_prediction, 0x0101
+
+    // setup destination pointer
+    vmovw               'a_ptr, SDMOF_IntraPredictionLuma + (MBIM_H264_Y_DC * 16*16) // 1 byte per pixel
+
+    // store prediction
+    vst128              dc_prediction, a_ptr, 0
+    vst128              dc_prediction, a_ptr, 16
+    vst128              dc_prediction, a_ptr, 32
+    vst128              dc_prediction, a_ptr, 48
+
+    vst128              dc_prediction, a_ptr, 64
+    vst128              dc_prediction, a_ptr, 80
+    vst128              dc_prediction, a_ptr, 96
+    vst128              dc_prediction, a_ptr, 112
+
+    vst128              dc_prediction, a_ptr, 128
+    vst128              dc_prediction, a_ptr, 144
+    vst128              dc_prediction, a_ptr, 160
+    vst128              dc_prediction, a_ptr, 176
+
+    vst128              dc_prediction, a_ptr, 192
+
+
+    // generate residual for whitening
+    vjl                 VSTACK, .GenerateIntra16x16Residual
+    
+    // delay slots start
+
+    // store prediction
+~   vst128              dc_prediction, a_ptr, 208
+~   vst128              dc_prediction, a_ptr, 224
+~   vst128              dc_prediction, a_ptr, 240
+
+    // delay slots end
+
+
+    // whiten residual and calculate sad
+    vjl                 VSTACK, .WhitenResidual_CalculateSAD
+
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+    // compare with best cost and use new value only if better (this preserves
+    // the priority of the mode processing order of 0, 1, 2)
+    vsubw.f             VZERO, 'gBestIntraLumaCost, intraLumaCost
+    vmivw.gt            'gBestIntraLumaCost, intraLumaCost
+    vmovw.gt            'gBestIntraLumaMode, MBIM_H264_Y_DC
+
+end // 1
+
+begin // 1
+    p16                 lambdaMult10_30
+
+    // scale final cost for comparison against inter
+    viv                 lambdaMult10_30, 'gLambdaMult10_30
+    vaddw               'gBestIntraLumaCost, 'gBestIntraLumaCost, lambdaMult10_30
+
+
+    // save results
+    vst8                'gBestIntraLumaMode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+    vst16               'gBestIntraLumaCost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+end // 1
+
+
+endfunc

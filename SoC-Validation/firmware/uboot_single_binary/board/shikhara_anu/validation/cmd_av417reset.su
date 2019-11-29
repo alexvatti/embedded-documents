@@ -1,0 +1,2 @@
+cmd_av417reset.c:48:5:do_av417enable	8	static
+cmd_av417reset.c:29:5:do_av417reset	8	static

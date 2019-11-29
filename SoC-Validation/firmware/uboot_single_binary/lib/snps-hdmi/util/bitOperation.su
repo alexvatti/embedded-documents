@@ -1,0 +1,4 @@
+bitOperation.c:12:6:bitOperation_ConcatBits	16	static
+bitOperation.c:17:6:bitOperation_Bytes2Word	0	static
+bitOperation.c:22:5:bitOperation_BitField	0	static
+bitOperation.c:27:6:bitOperation_Bytes2Dword	0	static

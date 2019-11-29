@@ -1,0 +1,4 @@
+cmd_bmp_slideshow.c:355:12:do_bmp_slideshow_help	8	static
+cmd_bmp_slideshow.c:72:5:lcd_display_bitmap_slideshow	32	static
+cmd_bmp_slideshow.c:259:12:do_bmp_slideshow	32	static
+cmd_bmp_slideshow.c:226:6:flip_to_new_fb	0	static

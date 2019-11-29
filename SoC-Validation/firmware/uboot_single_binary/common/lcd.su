@@ -1,0 +1,14 @@
+lcd.c:183:6:lcd_putc	0	static
+lcd.c:1307:13:shikhara_lcd_draw_pixel	0	static
+lcd.c:224:6:lcd_puts	0	static
+lcd.c:238:6:lcd_printf	2096	static
+lcd.c:321:6:shikhara_lcd_drawchars_24_bit	32	static
+lcd.c:370:13:lcd_puts_xy	16	static
+lcd.c:518:6:lcd_clear	0	static
+lcd.c:506:5:do_lcd_clear	8	static
+lcd.c:448:5:drv_lcd_init	72	static
+lcd.c:610:7:lcd_setmem	0	static
+lcd.c:678:6:bitmap_plot	24	static
+lcd.c:821:5:lcd_display_bitmap	48	static
+lcd.c:1352:6:lcd_draw_rectangle	32	static
+lcd.c:1376:6:fill_screen	24	static

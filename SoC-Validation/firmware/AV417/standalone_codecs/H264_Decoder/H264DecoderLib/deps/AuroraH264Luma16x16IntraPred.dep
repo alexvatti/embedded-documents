@@ -1,0 +1,6 @@
+
+AuroraH264Luma16x16IntraPred.o:	\
+	./H264DecoderLib/H264SIMDDec/AuroraH264Luma16x16IntraPred.cpp \
+	./H264DecoderLib/H264SIMDDec/ARCMedia.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264Dec.h \
+	./H264DecoderLib/H264SIMDDec/AuroraRecMgr.h 

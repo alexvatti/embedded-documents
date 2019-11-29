@@ -1,0 +1,2 @@
+cmd_hdmi_preview.c:11:5:conversion	8	static
+cmd_hdmi_preview.c:25:6:do_preview_on_hdmi	8	static

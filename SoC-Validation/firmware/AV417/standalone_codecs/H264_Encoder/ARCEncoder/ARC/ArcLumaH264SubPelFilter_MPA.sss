@@ -1,0 +1,1031 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+    showstalls
+    setw                120
+    metaware
+    macrotable          LumaSubPelFilter,9
+    strict
+
+    include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#include "ArcSDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+
+//------------------------------------------------------------------------------
+// Name:          CopyLumaPredToSDM
+// Purpose:       Copies the luma prediction from
+//                main memory to the current MPC pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyLumaPredToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, ME_REFERENCE_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 for chroma U and in r1 for chroma V
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+//    vdmawait          0,0
+    
+end
+
+endfunc
+
+func        CallBackDoLumaSubPelFilter
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_DoLumaSubPelFilter   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          PerformInpHorFiltering
+// Purpose:       
+//                
+// Arguments:     inBuf
+//                outBuf
+//                
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f PerformInpHorFiltering
+    p16         inBuf=i0
+    p16         outBuf=i1
+begin
+    p16         count
+    vec16       inLft
+    vec16       inMdl
+    vec16       inRgt
+    vec16       outLft
+    vec16       outRgt
+    vec16       tmp1
+    vec16       tmp2
+    vec16       tmp3
+    vec16       tmp4
+    vec16       tmp5
+    
+    vmovw       'count, 16-1
+label lpStart    
+    // load the input data
+    vld64w      inLft, [inBuf, 0]   ;  // w08 w07 w06 w05 w04 w03 w02 w01
+    vld64w      inMdl, [inBuf, 8]   ;  // w16 w15 w14 w13 w12 w11 w10 w09
+    vld64w      inRgt, [inBuf, 16]  ;  // 000 000 000 w21 w20 w19 w18 w17
+
+    //arrange registers by shifts to the following format:
+    // inLft = w08 w07 w06 w05 w04 w03 w02 w01
+
+    vmr1w       tmp1, inMdl, inLft  ; // tmp1 = w09 w08 w07 w06 w05 w04 w03 w02
+    vmr2w       tmp2, inMdl, inLft  ; // tmp2 = w10 w09 w08 w07 w06 w05 w04 w03
+    vmr3w       tmp3, inMdl, inLft  ; // tmp3 = w11 w10 w09 w08 w07 w06 w05 w04
+    vmr4w       tmp4, inMdl, inLft  ; // tmp4 = w12 w11 w10 w09 w08 w07 w06 w05
+    vmr5w       tmp5, inMdl, inLft  ; // tmp5 = w13 w12 w11 w10 w09 w08 w07 w06
+
+    // at this point acc = tmp5
+    // now broadcast multiply and accumulate
+    vbmulaw     outLft, tmp1, (-5)    ; //acc += tmp1 * (-5)
+    vbmulaw     outLft, tmp2, (20)    ; //acc += tmp2 * (20)
+    vbmulaw     outLft, tmp3, (20)    ; //acc += tmp3 * (20)
+    vbmulaw     outLft, tmp4, (-5)    ; //acc += tmp4 * (-5)
+    vandaw      outLft, inLft, inLft; //acc += inLft
+    
+    // Arrange the next 6 registers
+    // inMdl = w16 w15 w14 w13 w12 w11 w10 w09
+
+    vmr1w       tmp1, inRgt, inMdl  ; // tmp1 = w17 w16 w15 w14 w13 w12 w11 w10
+    vmr2w       tmp2, inRgt, inMdl  ; // tmp2 = w18 w17 w16 w15 w14 w13 w12 w11
+    vmr3w       tmp3, inRgt, inMdl  ; // tmp3 = w19 w18 w17 w16 w15 w14 w13 w12
+    vmr4w       tmp4, inRgt, inMdl  ; // tmp4 = w20 w19 w18 w17 w16 w15 w14 w13
+    vmr5w       tmp5, inRgt, inMdl  ; // tmp5 = w21 w20 w19 w18 w17 w16 w15 w14
+
+    // at this point acc = tmp5
+    // now broadcast multiply and accumulate
+    vbmulaw     outRgt, tmp1, (-5)    ; //acc += tmp1 * (-5)
+    vbmulaw     outRgt, tmp2, (20)    ; //acc += tmp2 * (20)
+    vbmulaw     outRgt, tmp3, (20)    ; //acc += tmp3 * (20)
+    vbmulaw     outRgt, tmp4, (-5)    ; //acc += tmp4 * (-5)
+    vandaw      outRgt, inMdl, inMdl; //acc += inMdl
+
+    // pack first 8 words
+    vasrrpwb    outLft, outLft, 5   ;   // pack the registers
+    
+    vim         inBuf,  inBuf,  ME_REFERENCE_ARRAY_STRIDE
+    // pack next 8 words
+    vasrrpwb    outRgt, outRgt, 5   ;   // pack the registers
+
+    //store result
+    vjd.count   count, .lpStart
+    ~vst64       outLft,   [outBuf, 0] ;   // store the result             
+    ~vst64       outRgt,   [outBuf, 8] ;   // store the result 
+    ~vim         outBuf, outBuf, ME_REFERENCE_ARRAY_STRIDE
+   
+
+
+end
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          QPelFiltering
+// Purpose:       
+//                
+// Arguments:     in1Buf
+//                in2Buf
+//                outBuf
+//                shift
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f QPelFiltering
+    p16         in1Buf=i0
+    p16         in2Buf=i1
+    p16         outBuf=i2
+    p16         iShift=i3
+begin
+    p16         count
+    vec16       vShift
+    vec16       a1Lft
+    vec16       a1Mdl
+    vec16       a1Rgt
+    vec16       a2Lft
+    vec16       a2Mdl
+    vec16       a2Rgt
+    vec16       b1Lft
+    vec16       b1Rgt
+    vec16       b2Lft
+    vec16       b2Rgt
+
+    vmivw               vShift, iShift
+    vmovw               'count, 8-1
+label lpStart    
+    // load input data - ROW 1
+    vld64w              a1Lft, [in1Buf, 0]   ;  // inp1: w08 w07 w06 w05 w04 w03 w02 w01
+    vld64w              a1Mdl, [in1Buf, 8]   ;  // inp1: w16 w15 w14 w13 w12 w11 w10 w09
+    vld64w.iShift       a1Rgt, [in1Buf, 16]  ;  // inp1: 000 000 000 w21 w20 w19 w18 w17
+    vld64w              b1Lft, [in2Buf, 0]   ;  // inp2: w08 w07 w06 w05 w04 w03 w02 w01
+    vld64w              b1Rgt, [in2Buf, 8]   ;  // inp2: w16 w15 w14 w13 w12 w11 w10 w09
+
+    // load input data - ROW 2
+    vld64w              a2Lft, [in1Buf, ME_REFERENCE_ARRAY_STRIDE]    ; // inp1: w08 w07 w06 w05 w04 w03 w02 w01
+    vld64w              a2Mdl, [in1Buf, ME_REFERENCE_ARRAY_STRIDE+8]  ; // inp1: w16 w15 w14 w13 w12 w11 w10 w09
+    vld64w.iShift       a2Rgt, [in1Buf, ME_REFERENCE_ARRAY_STRIDE+16] ; // inp1: 000 000 000 w21 w20 w19 w18 w17
+    vld64w              b2Lft, [in2Buf, ME_REFERENCE_ARRAY_STRIDE]    ; // inp2: w08 w07 w06 w05 w04 w03 w02 w01
+    vld64w              b2Rgt, [in2Buf, ME_REFERENCE_ARRAY_STRIDE+8]  ; // inp2: w16 w15 w14 w13 w12 w11 w10 w09
+
+    //shift right by 2 to reject the first 2 columns
+    vseqw               vShift, 2
+    vmr2w.s             a1Lft, a1Mdl, a1Lft ; // a2Lft= w10 w09 w08 w07 w06 w05 w04 w03
+    vmr2w.s             a1Mdl, a1Rgt, a1Mdl ; // a2Mdl= w18 w17 w16 w15 w14 w13 w12 w11
+
+    //shift right by 2 to reject the first 2 columns
+    vmr2w.s             a2Lft, a2Mdl, a2Lft ; // a2Lft= w10 w09 w08 w07 w06 w05 w04 w03
+    vmr2w.s             a2Mdl, a2Rgt, a2Mdl ; // a2Mdl= w18 w17 w16 w15 w14 w13 w12 w11
+
+    //shift right by 3 to reject the first 2 columns
+    vseqw               vShift, 3
+    vmr3w.s             a1Lft, a1Mdl, a1Lft ; // a2Lft= w11 w10 w09 w08 w07 w06 w05 w04
+    vmr3w.s             a1Mdl, a1Rgt, a1Mdl ; // a2Mdl= w19 w18 w17 w16 w15 w14 w13 w12
+
+    //shift right by 3 to reject the first 2 columns
+    vmr3w.s             a2Lft, a2Mdl, a2Lft ; // a2Lft= w11 w10 w09 w08 w07 w06 w05 w04
+    vmr3w.s             a2Mdl, a2Rgt, a2Mdl ; // a2Mdl= w19 w18 w17 w16 w15 w14 w13 w12
+
+    // calculate the output
+    vaddw               a1Lft, b1Lft, a1Lft ; // a2Rgt = a2Lft + b1Lft
+    vaddw               a1Mdl, b1Rgt, a1Mdl ; // b2Lft = a2Mdl + b1Rgt
+
+    // calculate the output
+    vaddw               a2Lft, b2Lft, a2Lft ; // a2Rgt = a2Lft + b1Lft
+    vaddw               a2Mdl, b2Rgt, a2Mdl ; // b2Lft = a2Mdl + b1Rgt
+
+    // round, pack and save the result
+    vasrrpwb            a1Lft, a1Lft, 1; // round/pack the result
+    vasrrpwb            a1Mdl, a1Mdl, 1; // round/pack the result
+
+    // round, pack and save the result
+    vasrrpwb            a2Lft, a2Lft, 1; // round/pack the result
+    vasrrpwb            a2Mdl, a2Mdl, 1; // round/pack the result
+
+    vst64               a1Lft, [outBuf, 0]; //store output
+    vst64               a1Mdl, [outBuf, 8]; //store output
+
+    vst64               a2Lft, [outBuf, ME_REFERENCE_ARRAY_STRIDE];//store output
+    vst64               a2Mdl, [outBuf, ME_REFERENCE_ARRAY_STRIDE+8];//store output
+
+    vjd.count           count, .lpStart
+    ~vim                 in1Buf, in1Buf, 2*ME_REFERENCE_ARRAY_STRIDE
+    ~vim                 in2Buf, in2Buf, 2*ME_REFERENCE_ARRAY_STRIDE
+    ~vim                 outBuf, outBuf, 2*ME_REFERENCE_ARRAY_STRIDE
+
+end
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          VerticalFilteringAndRounding
+// Purpose:       
+//                
+// Arguments:     inBuf
+//                outBuf
+//                iters
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f VerticalFilteringAndRounding
+    p16                 inBuf=i0
+    p16                 outBuf=i1
+    p16                 iters=i2
+begin
+    vec16               row00
+    vec16               row01
+    vec16               row02
+    vec16               row03
+    vec16               row04
+    vec16               row05
+    vec16               row06
+    vec16               row07
+    vec16               row08
+    vec16               row09
+    vec16               row10
+    vec16               row11
+    vec16               row12
+    vec16               row13
+    vec16               row14
+    vec16               row15
+    vec16               row16
+    vec16               row17
+    vec16               row18
+    vec16               row19
+    vec16               row20
+    vec16               work1
+    vec16               work2
+    vec16               work3
+    
+    vim     iters, iters, -1
+label lpStart
+    // applies vertical filtering to buffer pointed to by inBuf and stores
+    // result at outBuf
+    // load the input 21 rows at offset of ME_REFERENCE_ARRAY_STRIDE bytes
+    vld64w  row00, [inBuf, 0*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row01, [inBuf, 1*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row02, [inBuf, 2*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row03, [inBuf, 3*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row04, [inBuf, 4*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row05, [inBuf, 5*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row06, [inBuf, 6*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row07, [inBuf, 7*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row08, [inBuf, 8*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row09, [inBuf, 9*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row10, [inBuf, 10*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row11, [inBuf, 11*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row12, [inBuf, 12*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row13, [inBuf, 13*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row14, [inBuf, 14*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row15, [inBuf, 15*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row16, [inBuf, 16*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row17, [inBuf, 17*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row18, [inBuf, 18*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row19, [inBuf, 19*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row20, [inBuf, 20*ME_REFERENCE_ARRAY_STRIDE] ;
+
+    // calculate first output
+    vbmulw  work1, row01, (-5)        ; //acc += vr02*(-5)
+    vbmulaw work1, row02, (20)        ; //acc += vr03*(20)
+    vbmulaw work1, row03, (20)        ; //acc += vr04*(20)
+    vbmulaw work1, row04, (-5)        ; //acc += vr05*(-5)
+    vaddaw  work1, row00, row05    ;
+
+    // calculate second output
+    vbmulw  work2, row02, (-5)        ; //acc = vr03*(-5)
+    vbmulaw work2, row03, (20)        ; //acc += vr04*(20)
+    vbmulaw work2, row04, (20)        ; //acc += vr05*(20)
+    vbmulaw work2, row05, (-5)        ; //acc += vr06*(-5)
+    vaddaw  work2, row01, row06    ;
+ 
+    vasrrpwb    work1, work1, 5   ; //pack the 1st output
+
+    // calculate third output
+    vbmulw  work3, row03, (-5)        ; //acc += vr04*(-5)
+    vbmulaw work3, row04, (20)        ; //acc += vr05*(20)
+    vbmulaw work3, row05, (20)        ; //acc += vr06*(20)
+    vbmulaw work3, row06, (-5)        ; //acc += vr07*(-5)
+    vaddaw  work3, row02, row07    ;
+
+    vst64       work1, [outBuf, 0*ME_REFERENCE_ARRAY_STRIDE]   ; //store the first result
+    vasrrpwb    work2, work2, 5   ; //pack the second output
+
+
+    // calculate fourth output
+    vbmulw  work1, row04, (-5)        ; //acc  = vr05*(-5)
+    vbmulaw work1, row05, (20)        ; //acc += vr06*(20)
+    vbmulaw work1, row06, (20)        ; //acc += vr07*(20)
+    vbmulaw work1, row07, (-5)        ; //acc += vr08*(-5)
+    vaddaw  work1, row03, row08    ;
+
+    vst64       work2, [outBuf, 1*ME_REFERENCE_ARRAY_STRIDE]  ; //store the second result
+    vasrrpwb    work3, work3, 5   ; //pack the third output
+
+    // calculate the 5th output
+    vbmulw  work2, row05, (-5)        ; //acc  = vr06*(-5)
+    vbmulaw work2, row06, (20)        ; //acc += vr07*(20)
+    vbmulaw work2, row07, (20)        ; //acc += vr08*(20)
+    vbmulaw work2, row08, (-5)        ; //acc += vr09*(-5)
+    vaddaw  work2, row04, row09    ; //acc += vr05+vr10
+
+    vst64       work3, [outBuf, 2*ME_REFERENCE_ARRAY_STRIDE]       ; // store the 3rd result
+    vasrrpwb    work1, work1, 5   ; // pack the 4th output
+
+
+    // calculate the 6th output
+    vbmulw  work3, row06, (-5)        ; //acc  = vr07*(-5)
+    vbmulaw work3, row07, (20)        ; //acc += vr08*(20)
+    vbmulaw work3, row08, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row09, (-5)        ; //acc += vr10*(-5)
+    vaddaw  work3, row05, row10    ; //acc += vr06+vr11
+
+    vst64       work1, [outBuf, 3*ME_REFERENCE_ARRAY_STRIDE]      ; // store the 4th result
+    vasrrpwb    work2, work2, 5   ; // pack the 5th output
+
+    // calculate the 7th output
+    vbmulw  work1, row07, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row08, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row09, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row10, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row06, row11    ; //acc += vr07+vr12
+
+    vst64       work2, [outBuf, 4*ME_REFERENCE_ARRAY_STRIDE]      ; // store the 5th result
+    vasrrpwb    work3, work3, 5   ; // pack the 6th output
+
+    // calculate the 8th output
+    vbmulw  work2, row08, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work2, row09, (20)        ; //acc += vr09*(20)
+    vbmulaw work2, row10, (20)        ; //acc += vr10*(20)
+    vbmulaw work2, row11, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work2, row07, row12    ; //acc += vr07+vr12
+
+    vst64   work3, [outBuf, 5*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work1, work1, 5   ; // pack the 6th output
+
+    // calculate the 9th output
+    vbmulw  work3, row09, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work3, row10, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row11, (20)        ; //acc += vr10*(20)
+    vbmulaw work3, row12, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work3, row08, row13    ; //acc += vr07+vr12
+
+    vst64   work1, [outBuf, 6*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work2, work2, 5   ; // pack the 6th output
+
+    // calculate the 10th output
+    vbmulw  work1, row10, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row11, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row12, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row13, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row09, row14    ; //acc += vr07+vr12
+
+    vst64   work2, [outBuf, 7*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work3, work3, 5   ; // pack the 6th output
+
+    // calculate the 11th output
+    vbmulw  work2, row11, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work2, row12, (20)        ; //acc += vr09*(20)
+    vbmulaw work2, row13, (20)        ; //acc += vr10*(20)
+    vbmulaw work2, row14, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work2, row10, row15    ; //acc += vr07+vr12
+
+    vst64   work3, [outBuf, 8*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work1, work1, 5   ; // pack the 6th output
+
+    // calculate the 12th output
+    vbmulw  work3, row12, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work3, row13, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row14, (20)        ; //acc += vr10*(20)
+    vbmulaw work3, row15, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work3, row11, row16    ; //acc += vr07+vr12
+
+    vst64   work1, [outBuf, 9*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work2, work2, 5   ; // pack the 6th output
+
+    // calculate the 13th output
+    vbmulw  work1, row13, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row14, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row15, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row16, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row12, row17    ; //acc += vr07+vr12
+
+    vst64   work2, [outBuf, 10*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work3, work3, 5   ; // pack the 6th output
+
+    // calculate the 14th output
+    vbmulw  work2, row14, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work2, row15, (20)        ; //acc += vr09*(20)
+    vbmulaw work2, row16, (20)        ; //acc += vr10*(20)
+    vbmulaw work2, row17, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work2, row13, row18    ; //acc += vr07+vr12
+
+    vst64   work3, [outBuf, 11*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work1, work1, 5   ; // pack the 6th output
+
+    // calculate the 15th output
+    vbmulw  work3, row15, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work3, row16, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row17, (20)        ; //acc += vr10*(20)
+    vbmulaw work3, row18, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work3, row14, row19    ; //acc += vr07+vr12
+
+    vst64   work1, [outBuf, 12*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+    vasrrpwb    work2, work2, 5   ; // pack the 6th output
+
+    // calculate the 16th output
+    vbmulw  work1, row16, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row17, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row18, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row19, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row15, row20    ; //acc += vr07+vr12
+
+    vst64   work2, [outBuf, 13*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 6th result
+
+    vasrrpwb    work3, work3, 5   ; // pack the 7th output
+    vasrrpwb    work1, work1, 5   ; // pack the 8th output
+    
+    vim         inBuf, inBuf, 8
+    
+
+    vjd.iters   iters, .lpStart
+    ~vst64   work3, [outBuf, 14*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 7th result
+    ~vst64   work1, [outBuf, 15*ME_REFERENCE_ARRAY_STRIDE]     ; // store the 8th result
+    ~vim        outBuf, outBuf, 8
+  
+
+end
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          VerticalFilteringWORounding
+// Purpose:       
+//                
+// Arguments:     inBuf
+//                outBuf
+//                iters
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f VerticalFilteringWORounding
+    p16                 inBuf=i0
+    p16                 outBuf=i1
+    p16                 iters=i2
+begin
+    vec16               row00
+    vec16               row01
+    vec16               row02
+    vec16               row03
+    vec16               row04
+    vec16               row05
+    vec16               row06
+    vec16               row07
+    vec16               row08
+    vec16               row09
+    vec16               row10
+    vec16               row11
+    vec16               row12
+    vec16               row13
+    vec16               row14
+    vec16               row15
+    vec16               row16
+    vec16               row17
+    vec16               row18
+    vec16               row19
+    vec16               row20
+    vec16               work1
+    vec16               work2
+    vec16               work3
+    
+    vim     iters, iters, -1
+label lpStart
+    // applies vertical filtering to buffer pointed to by inBuf and stores
+    // result at outBuf
+    // load the input 21 rows at offset of ME_REFERENCE_ARRAY_STRIDE bytes
+    vld64w  row00, [inBuf, 0*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row01, [inBuf, 1*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row02, [inBuf, 2*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row03, [inBuf, 3*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row04, [inBuf, 4*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row05, [inBuf, 5*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row06, [inBuf, 6*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row07, [inBuf, 7*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row08, [inBuf, 8*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row09, [inBuf, 9*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row10, [inBuf, 10*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row11, [inBuf, 11*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row12, [inBuf, 12*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row13, [inBuf, 13*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row14, [inBuf, 14*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row15, [inBuf, 15*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row16, [inBuf, 16*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row17, [inBuf, 17*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row18, [inBuf, 18*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row19, [inBuf, 19*ME_REFERENCE_ARRAY_STRIDE] ;
+    vld64w  row20, [inBuf, 20*ME_REFERENCE_ARRAY_STRIDE] ;
+
+    // calculate first output
+    vbmulw  work1, row01, (-5)        ; //acc += vr02*(-5)
+    vbmulaw work1, row02, (20)        ; //acc += vr03*(20)
+    vbmulaw work1, row03, (20)        ; //acc += vr04*(20)
+    vbmulaw work1, row04, (-5)        ; //acc += vr05*(-5)
+    vaddaw  work1, row00, row05    ;
+
+    // calculate second output
+    vbmulw  work2, row02, (-5)        ; //acc = vr03*(-5)
+    vbmulaw work2, row03, (20)        ; //acc += vr04*(20)
+    vbmulaw work2, row04, (20)        ; //acc += vr05*(20)
+    vbmulaw work2, row05, (-5)        ; //acc += vr06*(-5)
+    vaddaw  work2, row01, row06    ;
+ 
+    // calculate third output
+    vbmulw  work3, row03, (-5)        ; //acc += vr04*(-5)
+    vbmulaw work3, row04, (20)        ; //acc += vr05*(20)
+    vbmulaw work3, row05, (20)        ; //acc += vr06*(20)
+    vbmulaw work3, row06, (-5)        ; //acc += vr07*(-5)
+    vaddaw  work3, row02, row07    ;
+
+    vst128       work1, [outBuf, 0*ME_WORKING_ARRAY_STRIDE]   ; //store the first result
+
+    // calculate fourth output
+    vbmulw  work1, row04, (-5)        ; //acc  = vr05*(-5)
+    vbmulaw work1, row05, (20)        ; //acc += vr06*(20)
+    vbmulaw work1, row06, (20)        ; //acc += vr07*(20)
+    vbmulaw work1, row07, (-5)        ; //acc += vr08*(-5)
+    vaddaw  work1, row03, row08    ;
+
+    vst128       work2, [outBuf, 1*ME_WORKING_ARRAY_STRIDE]  ; //store the second result
+
+    // calculate the 5th output
+    vbmulw  work2, row05, (-5)        ; //acc  = vr06*(-5)
+    vbmulaw work2, row06, (20)        ; //acc += vr07*(20)
+    vbmulaw work2, row07, (20)        ; //acc += vr08*(20)
+    vbmulaw work2, row08, (-5)        ; //acc += vr09*(-5)
+    vaddaw  work2, row04, row09    ; //acc += vr05+vr10
+
+    vst128       work3, [outBuf, 2*ME_WORKING_ARRAY_STRIDE]       ; // store the 3rd result
+
+    // calculate the 6th output
+    vbmulw  work3, row06, (-5)        ; //acc  = vr07*(-5)
+    vbmulaw work3, row07, (20)        ; //acc += vr08*(20)
+    vbmulaw work3, row08, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row09, (-5)        ; //acc += vr10*(-5)
+    vaddaw  work3, row05, row10    ; //acc += vr06+vr11
+
+    vst128       work1, [outBuf, 3*ME_WORKING_ARRAY_STRIDE]      ; // store the 4th result
+
+    // calculate the 7th output
+    vbmulw  work1, row07, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row08, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row09, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row10, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row06, row11    ; //acc += vr07+vr12
+
+    vst128       work2, [outBuf, 4*ME_WORKING_ARRAY_STRIDE]      ; // store the 5th result
+
+    // calculate the 8th output
+    vbmulw  work2, row08, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work2, row09, (20)        ; //acc += vr09*(20)
+    vbmulaw work2, row10, (20)        ; //acc += vr10*(20)
+    vbmulaw work2, row11, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work2, row07, row12    ; //acc += vr07+vr12
+
+    vst128   work3, [outBuf, 5*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 9th output
+    vbmulw  work3, row09, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work3, row10, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row11, (20)        ; //acc += vr10*(20)
+    vbmulaw work3, row12, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work3, row08, row13    ; //acc += vr07+vr12
+
+    vst128   work1, [outBuf, 6*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 10th output
+    vbmulw  work1, row10, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row11, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row12, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row13, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row09, row14    ; //acc += vr07+vr12
+
+    vst128   work2, [outBuf, 7*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 11th output
+    vbmulw  work2, row11, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work2, row12, (20)        ; //acc += vr09*(20)
+    vbmulaw work2, row13, (20)        ; //acc += vr10*(20)
+    vbmulaw work2, row14, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work2, row10, row15    ; //acc += vr07+vr12
+
+    vst128   work3, [outBuf, 8*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 12th output
+    vbmulw  work3, row12, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work3, row13, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row14, (20)        ; //acc += vr10*(20)
+    vbmulaw work3, row15, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work3, row11, row16    ; //acc += vr07+vr12
+
+    vst128   work1, [outBuf, 9*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 13th output
+    vbmulw  work1, row13, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row14, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row15, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row16, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row12, row17    ; //acc += vr07+vr12
+
+    vst128   work2, [outBuf, 10*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 14th output
+    vbmulw  work2, row14, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work2, row15, (20)        ; //acc += vr09*(20)
+    vbmulaw work2, row16, (20)        ; //acc += vr10*(20)
+    vbmulaw work2, row17, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work2, row13, row18    ; //acc += vr07+vr12
+
+    vst128   work3, [outBuf, 11*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 15th output
+    vbmulw  work3, row15, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work3, row16, (20)        ; //acc += vr09*(20)
+    vbmulaw work3, row17, (20)        ; //acc += vr10*(20)
+    vbmulaw work3, row18, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work3, row14, row19    ; //acc += vr07+vr12
+
+    vst128   work1, [outBuf, 12*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+
+    // calculate the 16th output
+    vbmulw  work1, row16, (-5)        ; //acc  = vr08*(-5)
+    vbmulaw work1, row17, (20)        ; //acc += vr09*(20)
+    vbmulaw work1, row18, (20)        ; //acc += vr10*(20)
+    vbmulaw work1, row19, (-5)        ; //acc += vr11*(-5)
+    vaddaw  work1, row15, row20    ; //acc += vr07+vr12
+
+    vst128   work2, [outBuf, 13*ME_WORKING_ARRAY_STRIDE]     ; // store the 6th result
+    vst128   work3, [outBuf, 14*ME_WORKING_ARRAY_STRIDE]     ; // store the 7th result
+
+    vjd.iters           iters, .lpStart
+    ~vst128   work1, [outBuf, 15*ME_WORKING_ARRAY_STRIDE]     ; // store the 8th result
+    ~vim                 inBuf, inBuf, 8
+    ~vim                 outBuf, outBuf, 16
+ 
+
+end
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          CentrePelFilterWOInpRounding
+// Purpose:       
+//                
+// Arguments:     inBuf
+//                outBuf
+//                
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f CentrePelFilterWOInpRounding
+    p16                 inBuf=i0
+    p16                 outBuf=i1
+begin
+    p16         iters
+    vec16       a1Lft
+    vec16       a1Mdl
+    vec16       a1Rgt
+    vec16       a2Lft
+    vec16       a2Mdl
+    vec16       a2Rgt
+    vec16       a1Offset1
+    vec16       a1Offset2
+    vec16       a1Offset3
+    vec16       a1Offset4
+    vec16       a1Offset5
+    vec16       a1Offset6
+    vec16       a2Offset1
+    vec16       a2Offset2
+    vec16       a2Offset3
+    vec16       a2Offset4
+    vec16       a2Offset5
+    vec16       a2Offset6
+
+    vmovw               'iters, 8-1
+label lpStart    
+    // load input data  ROW-1
+    vld128  a1Lft, [inBuf, 0]       ;  // a1Lft = w08 w07 w06 w05 w04 w03 w02 w01
+    vld128  a1Mdl, [inBuf, 16]    ;  // a1Mdl = w16 w15 w14 w13 w12 w11 w10 w09
+    vld128  a1Rgt, [inBuf, 32]  ;   // a1Rgt = 000 000 000 w21 w20 w19 w18 w17
+
+    // load input data  ROW-2
+    vld128  a2Lft, [inBuf, ME_WORKING_ARRAY_STRIDE]   ;  // a1Lft = w08 w07 w06 w05 w04 w03 w02 w01
+    vld128  a2Mdl, [inBuf, ME_WORKING_ARRAY_STRIDE+16];  // a1Mdl = w16 w15 w14 w13 w12 w11 w10 w09
+    vld128  a2Rgt, [inBuf, ME_WORKING_ARRAY_STRIDE+32];  // a1Rgt = 000 000 000 w21 w20 w19 w18 w17
+
+    // arrange inp: row-1/set-1
+    vmr2w   a1Offset1, a1Mdl, a1Lft ;  // a1Offset1 = w10 w09 w08 w07 w06 w05 w04 w03
+    vmr4w   a1Offset2, a1Mdl, a1Lft ;  // a1Offset2 = w12 w11 w10 w09 w08 w07 w06 w05
+    vmr6w   a1Offset3, a1Mdl, a1Lft ;  // a1Offset3 = w14 w13 w12 w11 w10 w09 w08 w07
+
+    // arrange inp: row-1/set-2
+    vmr2w   a1Offset4, a1Rgt, a1Mdl ; // a1Offset4 = w18 w17 w16 w15 w14 w13 w12 w11
+    vmr4w   a1Offset5, a1Rgt, a1Mdl ; // a1Offset5 = w20 w19 w18 w17 w16 w15 w14 w13                
+    vmr6w   a1Offset6, a1Rgt, a1Mdl ; // a1Offset6 = 000 w21 w20 w19 w18 w17 w16 w15
+
+    // apply filter: row-1/set-1
+    vd6tapf a1Offset1, a1Offset1, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a1Offset1, a1Lft, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a1Offset1, a1Offset2, 0x30; // 0 0 x x 0 0 0 0
+    vd6tapf a1Offset1, a1Offset3, 0xC0; // x x 0 0 0 0 0 0 
+    
+    // apply filter: row-1/set-2
+    vd6tapf a1Offset4, a1Offset4, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a1Offset4, a1Mdl, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a1Offset4, a1Offset5, 0x30; // 0 0 x x 0 0 0 0
+    vd6tapf a1Offset4, a1Offset6, 0xC0; // x x 0 0 0 0 0 0
+
+    // arrange inp: row-2/set-1
+    vmr2w   a2Offset1, a2Mdl, a2Lft ;  // a1Offset1 = w10 w09 w08 w07 w06 w05 w04 w03
+    vmr4w   a2Offset2, a2Mdl, a2Lft ;  // a1Offset2 = w12 w11 w10 w09 w08 w07 w06 w05
+    vmr6w   a2Offset3, a2Mdl, a2Lft ;  // a1Offset3 = w14 w13 w12 w11 w10 w09 w08 w07
+
+    // arrange inp: row-2/set-2
+    vmr2w   a2Offset4, a2Rgt, a2Mdl ; // a1Offset4 = w18 w17 w16 w15 w14 w13 w12 w11
+    vmr4w   a2Offset5, a2Rgt, a2Mdl ; // a1Offset5 = w20 w19 w18 w17 w16 w15 w14 w13                
+    vmr6w   a2Offset6, a2Rgt, a2Mdl ; // a1Offset6 = 000 w21 w20 w19 w18 w17 w16 w15
+
+    // apply filter: row-2/set-1
+    vd6tapf a2Offset1, a2Offset1, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a2Offset1, a2Lft, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a2Offset1, a2Offset2, 0x30; // 0 0 x x 0 0 0 0 
+    vd6tapf a2Offset1, a2Offset3, 0xC0; // x x 0 0 0 0 0 0 
+    
+    // apply filter: row-2/set-2
+    vd6tapf a2Offset4, a2Offset4, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a2Offset4, a2Mdl, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a2Offset4, a2Offset5, 0x30; // 0 0 x x 0 0 0 0
+    vd6tapf a2Offset4, a2Offset6, 0xC0; // x x 0 0 0 0 0 0
+
+    // pack and store the result
+    vasrrpwb    a1Offset1, a1Offset1, 0   ;   // pack the registers: row-1/set-1
+    vasrrpwb    a1Offset4, a1Offset4, 0   ;   // pack the registers: row-1/set-2
+    vasrrpwb    a2Offset1, a2Offset1, 0   ;   // pack the registers: row-1/set-2
+    vasrrpwb    a2Offset4, a2Offset4, 0   ;   // pack the registers: row-2/set-2
+
+    vst64   a1Offset1,   [outBuf, 0] ;   // store the result: row-1/set-1
+    vst64   a1Offset4,   [outBuf, 8] ;   // store the result: row-1/set-2
+    vst64   a2Offset1,   [outBuf, ME_REFERENCE_ARRAY_STRIDE];   // store the result: row-2/set-2
+ 
+    vjd.iters           iters, .lpStart
+    ~vst64   a2Offset4,   [outBuf, ME_REFERENCE_ARRAY_STRIDE+8];   // store the result: row-2/set-2
+    ~vim     inBuf, inBuf, 2*ME_WORKING_ARRAY_STRIDE
+    ~vim     outBuf, outBuf, 2*ME_REFERENCE_ARRAY_STRIDE
+  
+    
+end
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          CentrePelFilAndInpRounding
+// Purpose:       
+//                
+// Arguments:     inBuf
+//                out1Buf
+//                out2Buf
+//                
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f CentrePelFilAndInpRounding
+    p16                 inBuf=i0
+    p16                 out1Buf=i1
+    p16                 out2Buf=i2
+begin
+    p16         iters
+    vec16       a1Lft
+    vec16       a1Mdl
+    vec16       a1Rgt
+    vec16       a2Lft
+    vec16       a2Mdl
+    vec16       a2Rgt
+    vec16       a1Offset1
+    vec16       a1Offset2
+    vec16       a1Offset3
+    vec16       a1Offset4
+    vec16       a1Offset5
+    vec16       a1Offset6
+    vec16       a2Offset1
+    vec16       a2Offset2
+    vec16       a2Offset3
+    vec16       a2Offset4
+    vec16       a2Offset5
+    vec16       a2Offset6
+
+    vmovw               'iters, 8-1
+label lpStart    
+    // load input data  ROW-1
+    vld128  a1Lft, [inBuf, 0]       ;  // a1Lft = w08 w07 w06 w05 w04 w03 w02 w01
+    vld128  a1Mdl, [inBuf, 16]    ;  // a1Mdl = w16 w15 w14 w13 w12 w11 w10 w09
+    vld128  a1Rgt, [inBuf, 32]  ;   // a1Rgt = 000 000 000 w21 w20 w19 w18 w17
+
+    // load input data  ROW-2
+    vld128  a2Lft, [inBuf, ME_WORKING_ARRAY_STRIDE]   ;  // a1Lft = w08 w07 w06 w05 w04 w03 w02 w01
+    vld128  a2Mdl, [inBuf, ME_WORKING_ARRAY_STRIDE+16];  // a1Mdl = w16 w15 w14 w13 w12 w11 w10 w09
+    vld128  a2Rgt, [inBuf, ME_WORKING_ARRAY_STRIDE+32];  // a1Rgt = 000 000 000 w21 w20 w19 w18 w17
+
+    // arrange inp: row-1/set-1
+    vmr2w   a1Offset1, a1Mdl, a1Lft ;  // a1Offset1 = w10 w09 w08 w07 w06 w05 w04 w03
+    vmr4w   a1Offset2, a1Mdl, a1Lft ;  // a1Offset2 = w12 w11 w10 w09 w08 w07 w06 w05
+    vmr6w   a1Offset3, a1Mdl, a1Lft ;  // a1Offset3 = w14 w13 w12 w11 w10 w09 w08 w07
+
+    // arrange inp: row-1/set-2
+    vmr2w   a1Offset4, a1Rgt, a1Mdl ; // a1Offset4 = w18 w17 w16 w15 w14 w13 w12 w11
+    vmr4w   a1Offset5, a1Rgt, a1Mdl ; // a1Offset5 = w20 w19 w18 w17 w16 w15 w14 w13                
+    vmr6w   a1Offset6, a1Rgt, a1Mdl ; // a1Offset6 = 000 w21 w20 w19 w18 w17 w16 w15
+
+    // apply filter: row-1/set-1
+    vd6tapf a1Offset1, a1Offset1, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a1Offset1, a1Lft, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a1Offset1, a1Offset2, 0x30; // 0 0 x x 0 0 0 0
+    vd6tapf a1Offset1, a1Offset3, 0xC0; // x x 0 0 0 0 0 0 
+    
+    // apply filter: row-1/set-2
+    vd6tapf a1Offset4, a1Offset4, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a1Offset4, a1Mdl, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a1Offset4, a1Offset5, 0x30; // 0 0 x x 0 0 0 0
+    vd6tapf a1Offset4, a1Offset6, 0xC0; // x x 0 0 0 0 0 0
+
+    // arrange inp: row-2/set-1
+    vmr2w   a2Offset1, a2Mdl, a2Lft ;  // a1Offset1 = w10 w09 w08 w07 w06 w05 w04 w03
+    vmr4w   a2Offset2, a2Mdl, a2Lft ;  // a1Offset2 = w12 w11 w10 w09 w08 w07 w06 w05
+    vmr6w   a2Offset3, a2Mdl, a2Lft ;  // a1Offset3 = w14 w13 w12 w11 w10 w09 w08 w07
+
+    // arrange inp: row-2/set-2
+    vmr2w   a2Offset4, a2Rgt, a2Mdl ; // a1Offset4 = w18 w17 w16 w15 w14 w13 w12 w11
+    vmr4w   a2Offset5, a2Rgt, a2Mdl ; // a1Offset5 = w20 w19 w18 w17 w16 w15 w14 w13                
+    vmr6w   a2Offset6, a2Rgt, a2Mdl ; // a1Offset6 = 000 w21 w20 w19 w18 w17 w16 w15
+
+    // apply filter: row-2/set-1
+    vd6tapf a2Offset1, a2Offset1, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a2Offset1, a2Lft, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a2Offset1, a2Offset2, 0x30; // 0 0 x x 0 0 0 0 
+    vd6tapf a2Offset1, a2Offset3, 0xC0; // x x 0 0 0 0 0 0 
+    
+    // apply filter: row-2/set-2
+    vd6tapf a2Offset4, a2Offset4, 0xC ; // 0 0 0 0 x x 0 0
+    vd6tapf a2Offset4, a2Mdl, 0x3 ; // 0 0 0 0 0 0 x x
+    vd6tapf a2Offset4, a2Offset5, 0x30; // 0 0 x x 0 0 0 0
+    vd6tapf a2Offset4, a2Offset6, 0xC0; // x x 0 0 0 0 0 0
+
+    // pack and store the result
+    vasrrpwb    a1Offset1, a1Offset1, 0   ;   // pack the registers: row-1/set-1
+    vasrrpwb    a1Offset4, a1Offset4, 0   ;   // pack the registers: row-1/set-2
+    vasrrpwb    a2Offset1, a2Offset1, 0   ;   // pack the registers: row-1/set-2
+    vasrrpwb    a2Offset4, a2Offset4, 0   ;   // pack the registers: row-2/set-2
+
+    vst64   a1Offset1,   [out2Buf, 0] ;   // store the result: row-1/set-1
+    vst64   a1Offset4,   [out2Buf, 8] ;   // store the result: row-1/set-2
+    vst64   a2Offset1,   [out2Buf, ME_REFERENCE_ARRAY_STRIDE];   // store the result: row-2/set-2
+    vst64   a2Offset4,   [out2Buf, ME_REFERENCE_ARRAY_STRIDE+8];   // store the result: row-2/set-2
+
+    // pack and store input
+    vasrrpwb a1Lft, a1Lft, 5  ;   //pack input
+    vasrrpwb a1Mdl, a1Mdl, 5  ;   //pack input
+    vasrrpwb a1Rgt, a1Rgt, 5  ;   //pack input
+
+    vst64   a1Lft, [out1Buf, 0] ; //store input
+    vst64   a1Mdl, [out1Buf, 8] ; //store input
+    vst64   a1Rgt, [out1Buf, 16] ;    //store input
+
+    // pack and store input
+    vasrrpwb a2Lft, a2Lft, 5  ;   //pack input
+    vasrrpwb a2Mdl, a2Mdl, 5  ;   //pack input
+    vasrrpwb a2Rgt, a2Rgt, 5  ;   //pack input
+
+    vst64   a2Lft, [out1Buf, ME_REFERENCE_ARRAY_STRIDE] ;    //store input
+    vst64   a2Mdl, [out1Buf, ME_REFERENCE_ARRAY_STRIDE+8] ;    //store input
+    vst64   a2Rgt, [out1Buf, ME_REFERENCE_ARRAY_STRIDE+16] ;    //store input
+
+    vjd.iters           iters, .lpStart
+    ~vim                 inBuf, inBuf, 2*ME_WORKING_ARRAY_STRIDE
+    ~vim                 out1Buf, out1Buf, 2*ME_REFERENCE_ARRAY_STRIDE
+    ~vim                 out2Buf, out2Buf, 2*ME_REFERENCE_ARRAY_STRIDE
+
+end
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          StoreFilteredLumaPred
+// Purpose:       
+//                
+// Arguments:     src
+//                dest
+//                
+// Return Value:  void
+//------------------------------------------------------------------------------
+func StoreFilteredLumaPred
+    p16             src
+    p16             dst
+begin
+    vec16           v1
+    vec16           v2
+    vec16           v3
+    vec16           v4
+    
+    vld128          v1, [src, 0*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 1*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 2*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 3*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 0*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 1*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 2*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 3*PCB_REFERENCE_STRIDE]
+    
+    vld128          v1, [src, 4*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 5*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 6*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 7*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 4*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 5*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 6*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 7*PCB_REFERENCE_STRIDE]
+    
+    vld128          v1, [src, 8*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 9*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 10*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 11*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 8*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 9*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 10*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 11*PCB_REFERENCE_STRIDE]
+    
+    vld128          v1, [src, 12*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 13*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 14*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 15*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 12*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 13*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 14*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 15*PCB_REFERENCE_STRIDE]
+end
+endfunc

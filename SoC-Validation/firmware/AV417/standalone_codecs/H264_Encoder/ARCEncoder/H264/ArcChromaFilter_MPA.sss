@@ -1,0 +1,461 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+//  showstalls
+setw                108
+metaware
+strict
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable FilterChroma, 2
+
+
+
+#include "ArcMPC.h"
+
+//---------------------------------------------------------------------------------
+// Name:          FilterChromaPred8
+// Purpose:       Filters chroma 8x8 or 4x8 predictions using simple bilinear 
+//                interpolation
+// Arguments:     predBuf:  Input buffer pointer
+//                outBuf :  Output buffer pointer
+//                iHorFrac: half pel precision horizontally
+//                iVerFrac: half pel precision vertically
+//                wideBlk:  0 if block width is 4, 1 if block width is 8
+// Return Value:  void
+//---------------------------------------------------------------------------------
+func.f FilterChromaPred8
+    p16                 predBuf = i0
+    p16                 outBuf  = i1
+    p16                 iHorFrac = i2
+    p16                 iVerFrac = i10
+    p16                 wideBlk = i3
+
+begin
+    p16                 subPel
+    vec16               horFrac
+    vec16               verFrac
+    vec16               invHorFrac
+    vec16               invVerFrac
+    
+    vec16               chromaLane0
+    vec16               chromaLane1
+    vec16               chromaLane2
+    vec16               chromaLane3
+    vec16               chromaLane4
+    vec16               chromaLane5
+    vec16               chromaLane6
+    vec16               chromaLane7
+    vec16               chromaLane8
+    
+    vec16               chromaOffsetLane0
+    vec16               chromaOffsetLane1
+    vec16               chromaOffsetLane2
+    vec16               chromaOffsetLane3
+    vec16               chromaOffsetLane4
+    vec16               chromaOffsetLane5
+    vec16               chromaOffsetLane6
+    vec16               chromaOffsetLane7
+    vec16               chromaOffsetLane8
+    
+    // Load data to be filtered
+    vld64w              chromaLane0, [predBuf, 0*16]
+    vld64w              chromaLane1, [predBuf, 1*16]
+    vld64w              chromaLane2, [predBuf, 2*16]
+    vld64w              chromaLane3, [predBuf, 3*16]
+    vld64w              chromaLane4, [predBuf, 4*16]
+    
+    // If none of horFrac or verFrac is set then go straight to DMA out
+    // No filtering is to be performed
+    s16                 iTmpFrac : iHorFrac
+    vor                 'iTmpFrac, 'iHorFrac, 'iVerFrac
+    move16              subPel, iTmpFrac
+    vjp.subPel          .Continue
+~   vld64w              chromaLane5, [predBuf, 5*16]
+~   vld64w              chromaLane6, [predBuf, 6*16]
+~   vld64w              chromaLane7, [predBuf, 7*16]
+    vasrpwb             chromaLane0, chromaLane0, 0
+    vasrpwb             chromaLane1, chromaLane1, 0
+    vasrpwb             chromaLane2, chromaLane2, 0
+    vasrpwb             chromaLane3, chromaLane3, 0
+    vasrpwb             chromaLane4, chromaLane4, 0
+    vjp                 .Output
+~   vasrpwb             chromaLane5, chromaLane5, 0
+~   vasrpwb             chromaLane6, chromaLane6, 0
+~   vasrpwb             chromaLane7, chromaLane7, 0
+    
+label Continue    
+    // If horFilter isn't set go straight to the Vertical filtering section
+    vjp!iHorFrac         .VerFilter
+~   vnop
+~   vnop
+~   vnop
+    
+    // If only horFrac is set then perform horizontal filtering
+    // Load in extra column to the right of the 8x8 block
+    vld64w              chromaOffsetLane0, [predBuf, 0*16+8]
+    vld64w              chromaOffsetLane1, [predBuf, 1*16+8]
+    vld64w              chromaOffsetLane2, [predBuf, 2*16+8]
+    vld64w              chromaOffsetLane3, [predBuf, 3*16+8]
+    vld64w              chromaOffsetLane4, [predBuf, 4*16+8]
+    vld64w              chromaOffsetLane5, [predBuf, 5*16+8]
+    vld64w              chromaOffsetLane6, [predBuf, 6*16+8]
+    vld64w              chromaOffsetLane7, [predBuf, 7*16+8]
+    
+    vmr1w               chromaOffsetLane0, chromaOffsetLane0, chromaLane0
+    vmr1w               chromaOffsetLane1, chromaOffsetLane1, chromaLane1
+    vmr1w               chromaOffsetLane2, chromaOffsetLane2, chromaLane2
+    vmr1w               chromaOffsetLane3, chromaOffsetLane3, chromaLane3
+    vmr1w               chromaOffsetLane4, chromaOffsetLane4, chromaLane4
+    
+    // If verFrac is also set then go to 2D filter
+    // The above loads and VMRs aren't wasted as they are also needed for
+    // the 2D case anyway
+    vjp.iVerFrac         .2dFilter
+~   vmr1w               chromaOffsetLane5, chromaOffsetLane5, chromaLane5
+~   vmr1w               chromaOffsetLane6, chromaOffsetLane6, chromaLane6
+~   vmr1w               chromaOffsetLane7, chromaOffsetLane7, chromaLane7
+    
+    //actual horizontal filter
+    vmivw               horFrac, iHorFrac
+    vrsubw              invHorFrac, horFrac, 8
+    vmulw               chromaLane0, chromaLane0, invHorFrac
+    vmulaw              chromaLane0, chromaOffsetLane0, horFrac
+    vmulw               chromaLane1, chromaLane1, invHorFrac
+    vmulaw              chromaLane1, chromaOffsetLane1, horFrac
+    vmulw               chromaLane2, chromaLane2, invHorFrac
+    vmulaw              chromaLane2, chromaOffsetLane2, horFrac
+    vmulw               chromaLane3, chromaLane3, invHorFrac
+    vmulaw              chromaLane3, chromaOffsetLane3, horFrac
+    vmulw               chromaLane4, chromaLane4, invHorFrac
+    vmulaw              chromaLane4, chromaOffsetLane4, horFrac
+    vmulw               chromaLane5, chromaLane5, invHorFrac
+    vmulaw              chromaLane5, chromaOffsetLane5, horFrac
+    vmulw               chromaLane6, chromaLane6, invHorFrac
+        
+    vjp                 .RoundAndShift
+~   vmulaw              chromaLane6, chromaOffsetLane6, horFrac
+~   vmulw               chromaLane7, chromaLane7, invHorFrac
+~   vmulaw              chromaLane7, chromaOffsetLane7, horFrac
+    
+label VerFilter
+    vmivw               verFrac, iVerFrac
+    vrsubw              invVerFrac, verFrac, 8
+    // If only verFilter is set then load the extra lane at the bottom of the block
+    vld64w              chromaLane8, [predBuf, 8*16]
+    // perform actual vertical filter
+    vmulw               chromaLane0, chromaLane0, invVerFrac
+    vmulaw              chromaLane0, chromaLane1, verFrac
+    vmulw               chromaLane1, chromaLane1, invVerFrac
+    vmulaw              chromaLane1, chromaLane2, verFrac
+    vmulw               chromaLane2, chromaLane2, invVerFrac
+    vmulaw              chromaLane2, chromaLane3, verFrac
+    vmulw               chromaLane3, chromaLane3, invVerFrac
+    vmulaw              chromaLane3, chromaLane4, verFrac
+    vmulw               chromaLane4, chromaLane4, invVerFrac
+    vmulaw              chromaLane4, chromaLane5, verFrac
+    vmulw               chromaLane5, chromaLane5, invVerFrac
+    vmulaw              chromaLane5, chromaLane6, verFrac
+    vmulw               chromaLane6, chromaLane6, invVerFrac
+    vmulaw              chromaLane6, chromaLane7, verFrac
+    vmulw               chromaLane7, chromaLane7, invVerFrac
+    vmulaw              chromaLane7, chromaLane8, verFrac
+    
+label RoundAndShift
+    vasrrpwb            chromaLane0, chromaLane0, 3
+    vasrrpwb            chromaLane1, chromaLane1, 3
+    vasrrpwb            chromaLane2, chromaLane2, 3
+    vasrrpwb            chromaLane3, chromaLane3, 3
+    vasrrpwb            chromaLane4, chromaLane4, 3
+    vasrrpwb            chromaLane5, chromaLane5, 3
+    vasrrpwb            chromaLane6, chromaLane6, 3
+    vasrrpwb            chromaLane7, chromaLane7, 3
+    
+    // Go to Output
+    vjp                 .Output
+    // Don't need "nops" here as the 3 following instructions won't affect the
+    // continuation of the program at the jump target
+
+    
+~label 2dFilter
+    // Set the filter coefficients
+~   vec16               m0
+~   vec16               m1
+~   vec16               m2
+~   vec16               m3
+~   vmivw               horFrac, iHorFrac
+~   vrsubw              invHorFrac, horFrac, 8
+~   vmivw               verFrac, iVerFrac
+    vrsubw              invVerFrac, verFrac, 8
+    vmulw               m0, invHorFrac, invVerFrac
+    vmulw               m1, horFrac, invVerFrac
+    vmulw               m2, invHorFrac, verFrac
+    vmulw               m3, horFrac, verFrac
+    // Load in the extra lane + the extra pixel
+    vld64w              chromaLane8, [predBuf, 8*16]
+    vld64w              chromaOffsetLane8, [predBuf, 8*16+8]
+    vmr1w               chromaOffsetLane8, chromaOffsetLane8, chromaLane8
+    
+    // 2D filtering
+    vmulw               chromaLane0, chromaLane0, m0
+    vmulaw              chromaLane0, chromaOffsetLane0, m1
+    vmulaw              chromaLane0, chromaLane1, m2
+    vmulaw              chromaLane0, chromaOffsetLane1, m3
+    vmulw               chromaLane1, chromaLane1, m0
+    vmulaw              chromaLane1, chromaOffsetLane1, m1
+    vmulaw              chromaLane1, chromaLane2, m2
+    vmulaw              chromaLane1, chromaOffsetLane2, m3
+    vmulw               chromaLane2, chromaLane2, m0
+    vmulaw              chromaLane2, chromaOffsetLane2, m1
+    vmulaw              chromaLane2, chromaLane3, m2
+    vmulaw              chromaLane2, chromaOffsetLane3, m3
+    vmulw               chromaLane3, chromaLane3, m0
+    vmulaw              chromaLane3, chromaOffsetLane3, m1
+    vmulaw              chromaLane3, chromaLane4, m2
+    vmulaw              chromaLane3, chromaOffsetLane4, m3
+    vmulw               chromaLane4, chromaLane4, m0
+    vmulaw              chromaLane4, chromaOffsetLane4, m1
+    vmulaw              chromaLane4, chromaLane5, m2
+    vmulaw              chromaLane4, chromaOffsetLane5, m3
+    vmulw               chromaLane5, chromaLane5, m0
+    vmulaw              chromaLane5, chromaOffsetLane5, m1
+    vmulaw              chromaLane5, chromaLane6, m2
+    vmulaw              chromaLane5, chromaOffsetLane6, m3
+    vmulw               chromaLane6, chromaLane6, m0
+    vmulaw              chromaLane6, chromaOffsetLane6, m1
+    vmulaw              chromaLane6, chromaLane7, m2
+    vmulaw              chromaLane6, chromaOffsetLane7, m3
+    vmulw               chromaLane7, chromaLane7, m0
+    vmulaw              chromaLane7, chromaOffsetLane7, m1
+    vmulaw              chromaLane7, chromaLane8, m2
+    vmulaw              chromaLane7, chromaOffsetLane8, m3
+
+    vasrrpwb            chromaLane0, chromaLane0, 6
+    vasrrpwb            chromaLane1, chromaLane1, 6
+    vasrrpwb            chromaLane2, chromaLane2, 6
+    vasrrpwb            chromaLane3, chromaLane3, 6
+    vasrrpwb            chromaLane4, chromaLane4, 6
+    vasrrpwb            chromaLane5, chromaLane5, 6
+    vasrrpwb            chromaLane6, chromaLane6, 6
+    vasrrpwb            chromaLane7, chromaLane7, 6
+
+label Output
+    // If the filtered block is 8-pixels wide
+    vst64.wideBlk       chromaLane0, [outBuf, 0*16]
+    vst64.wideBlk       chromaLane1, [outBuf, 1*16]
+    vst64.wideBlk       chromaLane2, [outBuf, 2*16]
+    vst64.wideBlk       chromaLane3, [outBuf, 3*16]
+    vst64.wideBlk       chromaLane4, [outBuf, 4*16]
+    vst64.wideBlk       chromaLane5, [outBuf, 5*16]
+    vst64.wideBlk       chromaLane6, [outBuf, 6*16]
+    vst64.wideBlk       chromaLane7, [outBuf, 7*16]
+    // If the filtered block is 4-pixels wide
+    vst32!wideBlk       chromaLane0, [outBuf, 0*16]
+    vst32!wideBlk       chromaLane1, [outBuf, 1*16]
+    vst32!wideBlk       chromaLane2, [outBuf, 2*16]
+    vst32!wideBlk       chromaLane3, [outBuf, 3*16]
+    vst32!wideBlk       chromaLane4, [outBuf, 4*16]
+    vst32!wideBlk       chromaLane5, [outBuf, 5*16]
+    vst32!wideBlk       chromaLane6, [outBuf, 6*16]
+    vst32!wideBlk       chromaLane7, [outBuf, 7*16]
+
+end
+
+endfunc
+
+
+//---------------------------------------------------------------------------------
+// Name:          FilterChromaPred4
+// Purpose:       Filters chroma 8x4 or 4x4 predictions using simple bilinear 
+//                interpolation
+// Arguments:     predBuf: Input buffer pointer
+//                outBuf : Output buffer pointer
+//                horFrac: half pel precision horizontally
+//                verFrac: half pel precision vertically
+// Return Value:  void
+//---------------------------------------------------------------------------------
+func.f FilterChromaPred4
+    p16                 predBuf = i0
+    p16                 outBuf  = i1
+    p16                 iHorFrac = i2
+    p16                 iVerFrac = i10
+    p16                 wideBlk = i3
+
+begin
+    p16                 subPel
+    vec16               horFrac
+    vec16               verFrac
+    vec16               invHorFrac
+    vec16               invVerFrac
+    
+    vec16               chromaLane0
+    vec16               chromaLane1
+    vec16               chromaLane2
+    vec16               chromaLane3
+    vec16               chromaLane4
+    
+    vec16               chromaOffsetLane0
+    vec16               chromaOffsetLane1
+    vec16               chromaOffsetLane2
+    vec16               chromaOffsetLane3
+    vec16               chromaOffsetLane4
+    
+    // Load data to be filtered
+    vld64w              chromaLane0, [predBuf, 0*16]
+    
+    // If none of horFrac or verFrac is set then go straight to DMA out
+    // No filtering is to be performed
+    s16                 iTmpFrac : iHorFrac
+    vor                 'iTmpFrac, 'iHorFrac, 'iVerFrac
+    move16              subPel, iTmpFrac
+    vjp.subPel          .Continue
+~   vld64w              chromaLane1, [predBuf, 1*16]
+~   vld64w              chromaLane2, [predBuf, 2*16]
+~   vld64w              chromaLane3, [predBuf, 3*16]
+    vasrpwb             chromaLane0, chromaLane0, 0
+    vjp                 .Output
+~   vasrpwb             chromaLane1, chromaLane1, 0
+~   vasrpwb             chromaLane2, chromaLane2, 0
+~   vasrpwb             chromaLane3, chromaLane3, 0
+    
+label Continue    
+    // If horFilter isn't set go straight to the Vertical filtering section
+    vjp!iHorFrac         .VerFilter
+~   vnop
+~   vnop
+~   vnop
+    
+    // If only horFrac is set then perform horizontal filtering
+    // Load in extra column to the right of the 8x8 block
+    vld64w              chromaOffsetLane0, [predBuf, 0*16+8]
+    vld64w              chromaOffsetLane1, [predBuf, 1*16+8]
+    vld64w              chromaOffsetLane2, [predBuf, 2*16+8]
+    vld64w              chromaOffsetLane3, [predBuf, 3*16+8]
+    
+    vmr1w               chromaOffsetLane0, chromaOffsetLane0, chromaLane0
+    
+    // If verFrac is also set then go to 2D filter
+    // The above loads and VMRs aren't wasted as they are also needed for
+    // the 2D case anyway
+    vjp.iVerFrac         .2dFilter
+~   vmr1w               chromaOffsetLane1, chromaOffsetLane1, chromaLane1
+~   vmr1w               chromaOffsetLane2, chromaOffsetLane2, chromaLane2
+~   vmr1w               chromaOffsetLane3, chromaOffsetLane3, chromaLane3
+    
+    //actual horizontal filter
+    vmivw               horFrac, iHorFrac
+    vrsubw              invHorFrac, horFrac, 8
+    vmulw               chromaLane0, chromaLane0, invHorFrac
+    vmulaw              chromaLane0, chromaOffsetLane0, horFrac
+    vmulw               chromaLane1, chromaLane1, invHorFrac
+    vmulaw              chromaLane1, chromaOffsetLane1, horFrac
+    vmulw               chromaLane2, chromaLane2, invHorFrac
+        
+    vjp                 .RoundAndShift
+~   vmulaw              chromaLane2, chromaOffsetLane2, horFrac
+~   vmulw               chromaLane3, chromaLane3, invHorFrac
+~   vmulaw              chromaLane3, chromaOffsetLane3, horFrac
+    
+label VerFilter
+    vmivw               verFrac, iVerFrac
+    vrsubw              invVerFrac, verFrac, 8
+    // If only verFilter is set then load the extra lane at the bottom of the block
+    vld64w              chromaLane4, [predBuf, 4*16]
+    // perform actual vertical filter
+    vmulw               chromaLane0, chromaLane0, invVerFrac
+    vmulaw              chromaLane0, chromaLane1, verFrac
+    vmulw               chromaLane1, chromaLane1, invVerFrac
+    vmulaw              chromaLane1, chromaLane2, verFrac
+    vmulw               chromaLane2, chromaLane2, invVerFrac
+    vmulaw              chromaLane2, chromaLane3, verFrac
+    vmulw               chromaLane3, chromaLane3, invVerFrac
+    vmulaw              chromaLane3, chromaLane4, verFrac
+    
+label RoundAndShift
+    vasrrpwb            chromaLane0, chromaLane0, 3
+    vasrrpwb            chromaLane1, chromaLane1, 3
+    vasrrpwb            chromaLane2, chromaLane2, 3
+    vasrrpwb            chromaLane3, chromaLane3, 3
+    
+    // Go to Output
+    vjp                 .Output
+    // Don't need "nops" here as the 3 following instructions won't affect the
+    // continuation of the program at the jump target
+
+    
+~label 2dFilter
+    // Set the filter coefficients
+~   vec16               m0
+~   vec16               m1
+~   vec16               m2
+~   vec16               m3
+~   vmivw               horFrac, iHorFrac
+~   vrsubw              invHorFrac, horFrac, 8
+~   vmivw               verFrac, iVerFrac
+    vrsubw              invVerFrac, verFrac, 8
+    vmulw               m0, invHorFrac, invVerFrac
+    vmulw               m1, horFrac, invVerFrac
+    vmulw               m2, invHorFrac, verFrac
+    vmulw               m3, horFrac, verFrac
+    // Load in the extra lane + the extra pixel
+    vld64w              chromaLane4, [predBuf, 4*16]
+    vld64w              chromaOffsetLane4, [predBuf, 4*16+8]
+    vmr1w               chromaOffsetLane4, chromaOffsetLane4, chromaLane4
+    
+    // 2D filtering
+    vmulw               chromaLane0, chromaLane0, m0
+    vmulaw              chromaLane0, chromaOffsetLane0, m1
+    vmulaw              chromaLane0, chromaLane1, m2
+    vmulaw              chromaLane0, chromaOffsetLane1, m3
+    vmulw               chromaLane1, chromaLane1, m0
+    vmulaw              chromaLane1, chromaOffsetLane1, m1
+    vmulaw              chromaLane1, chromaLane2, m2
+    vmulaw              chromaLane1, chromaOffsetLane2, m3
+    vmulw               chromaLane2, chromaLane2, m0
+    vmulaw              chromaLane2, chromaOffsetLane2, m1
+    vmulaw              chromaLane2, chromaLane3, m2
+    vmulaw              chromaLane2, chromaOffsetLane3, m3
+    vmulw               chromaLane3, chromaLane3, m0
+    vmulaw              chromaLane3, chromaOffsetLane3, m1
+    vmulaw              chromaLane3, chromaLane4, m2
+    vmulaw              chromaLane3, chromaOffsetLane4, m3
+
+    vasrrpwb            chromaLane0, chromaLane0, 6
+    vasrrpwb            chromaLane1, chromaLane1, 6
+    vasrrpwb            chromaLane2, chromaLane2, 6
+    vasrrpwb            chromaLane3, chromaLane3, 6
+
+label Output
+    // If the filtered block is 8-pixels wide
+    vst64.wideBlk       chromaLane0, [outBuf, 0*16]
+    vst64.wideBlk       chromaLane1, [outBuf, 1*16]
+    vst64.wideBlk       chromaLane2, [outBuf, 2*16]
+    vst64.wideBlk       chromaLane3, [outBuf, 3*16]
+    // If the filtered block is 4-pixels wide
+    vst32!wideBlk       chromaLane0, [outBuf, 0*16]
+    vst32!wideBlk       chromaLane1, [outBuf, 1*16]
+    vst32!wideBlk       chromaLane2, [outBuf, 2*16]
+    vst32!wideBlk       chromaLane3, [outBuf, 3*16]
+
+    
+end
+
+endfunc
+
+

@@ -1,0 +1,9 @@
+cmd_apkybd.c:172:5:do_kmi_dump	8	static
+cmd_apkybd.c:26:5:gic_check_irq1	0	static
+cmd_apkybd.c:36:5:apKMI_GetData	8	static
+cmd_apkybd.c:54:6:apKMI_GetKey	24	static
+cmd_apkybd.c:108:5:keyboard_init	16	static
+cmd_apkybd.c:144:5:keyboard_read	16	static
+cmd_apkybd.c:100:5:apKMI_TEST	8	static
+cmd_apkybd.c:163:5:do_apkybd	8	static
+cmd_apkybd.c:183:5:kmi_post	8	static

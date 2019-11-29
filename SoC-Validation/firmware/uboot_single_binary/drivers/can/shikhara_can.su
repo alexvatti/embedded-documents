@@ -1,0 +1,5 @@
+shikhara_can.c:206:5:shikhara_status	16	static
+shikhara_can.c:107:5:shikhara_xmit	8	static
+shikhara_can.c:55:5:shikhara_init	16	static
+shikhara_can.c:153:5:shikhara_recv	16	static
+shikhara_can.c:256:5:shikhara_can_initialize	8	static

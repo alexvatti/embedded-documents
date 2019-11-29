@@ -1,0 +1,142 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+//	showstalls
+	setw				120
+	metaware
+	macrotable			SDM_Buffers,5
+
+	include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#include "ArcMP4SDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init members of MPC circular buffer
+// Sets CirBuf
+// Sets FixBuf
+// Sets CirLeft
+func					SetCurrentMPC
+	// Params -----------
+	p16					cIdx			// Circular buffer index
+	p16					Column			// MacroBlock column
+	p16					leftIdx			// Circular buffer index of macro block to left
+	// End params -------
+// Setup pointers
+	vmulw				'cIdx'leftIdx, 'cIdx'leftIdx, MPO_SIZE_OF_CIRCULAR_BUF_ENTRY
+	vmulw				'Column, 'Column, MPO_SIZE_OF_FIXED_ENTRY
+	vim					CirBuf, cIdx, SDMOF_CircularBuffs
+	vim					FixBuf, Column, SDMOF_FixedBuffs
+	vim					CirLeft, leftIdx, SDMOF_CircularBuffs
+endfunc
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init ciruclar buffer entry
+// Assumes current MPC is set
+// Sends channel reply
+func					InitCurrentMPC
+	// No params ------
+//	vst8				VZERO,[CirBuf,MPO_QuantValue]
+//	vst8				VZERO,[CirBuf,MPO_MBCodingType]		// MBCT_H264_UNKNOWN
+	vst16				VZERO,[CirBuf,MPO_NonZeroCoeffLuma]
+	vst8				VZERO,[CirBuf,MPO_NonZeroCoeffChroma]
+	vst8				VZERO,[CirBuf,MPO_WorkArea_BestIntraChromaMode]
+	vst128				VZERO,[CirBuf,MPO_CoeffCountSB]
+	vst8				VZERO,[CirBuf,MPO_UV_DC_NonZeroCoeff]
+begin
+	s16					m1
+	vmovw				m1,-1
+	vst16				m1,[CirBuf,MPO_WorkArea_BestIntraLumaCost]
+end
+	vst8				VZERO,[CirBuf,MPO_WorkArea_BestIntraLumaMode]
+	vst8				VZERO,[CirBuf,MPO_WorkArea_BestIntraChromaMode]
+
+endfunc
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Sets the quantization values for each macroblock
+// Takes sliceType, chromaQpIndexOffset as the parameters
+
+func                    SetQuantValue
+    // Params -----------
+    p16                 cIdx            // Circular buffer index
+    p16                 leftIdx         // Circular buffer index of macro block to left
+    s16                 quantVal:cIdx   // Quantisation Parameter
+    // End params -------
+// Setup pointers
+    vmulw               'cIdx'leftIdx, 'cIdx'leftIdx, MPO_SIZE_OF_CIRCULAR_BUF_ENTRY
+    vim                 CirBuf, cIdx, SDMOF_CircularBuffs
+
+    // Store Quant value
+    vst8               quantVal, [CirBuf, MPO_QuantValue]
+endfunc
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Sets the quantization values for each macroblock
+// Takes sliceType, chromaQpIndexOffset as the parameters
+
+func                    RevertQuantValue
+    // Params -----------
+    p16                 cIdx            // Circular buffer index
+    p16                 leftIdx         // Circular buffer index of macro block to left
+    s16                 dquant:cIdx     // Quantisation Parameter differential value
+    // End params -------
+begin
+    s16                 quantVal:cIdx   // Quantisation Parameter
+    
+// Setup pointers
+    vmulw               'cIdx'leftIdx, 'cIdx'leftIdx, MPO_SIZE_OF_CIRCULAR_BUF_ENTRY
+    vim                 CirBuf, cIdx, SDMOF_CircularBuffs
+
+    // Store Quant value
+    vld8w               quantVal, [CirBuf, MPO_QuantValue]
+    vsubw               'quantVal, 'quantVal, 'dquant
+    vst8                quantVal, [CirBuf, MPO_QuantValue]
+end
+endfunc
+
+//------------------------------------------------------------------------------------------------------
+// Is Macro
+
+func					CopyToFixedAfterReconstructMP4
+begin
+	vec16				CtrlParams
+	vec16				MotionVecs
+	vec16				YIntraPredDC
+	vec16				UVIntraPredDC
+
+	vld128				CtrlParams, [CirBuf, MPO_LeftMB]
+	vld128				MotionVecs, [CirBuf, MPO_mv]
+	vld64				YIntraPredDC, [CirBuf, MPO_Y_IntraPredDC_Coeff]
+	vld32				UVIntraPredDC, [CirBuf, MPO_UV_IntraPredDC_Coeff]
+	
+	vst128				CtrlParams, [FixBuf, MPO_LeftMB]
+	vst128				MotionVecs, [FixBuf, MPO_mv]
+	vst64				YIntraPredDC, [FixBuf, MPO_Y_IntraPredDC_Coeff]
+	vst32				UVIntraPredDC, [FixBuf, MPO_UV_IntraPredDC_Coeff]
+end
+endfunc
+

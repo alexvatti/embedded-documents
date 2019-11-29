@@ -1,0 +1,9 @@
+system.c:44:6:system_SleepMs	0	static
+system.c:58:5:system_ThreadCreate	0	static
+system.c:72:5:system_ThreadDestruct	0	static
+system.c:82:5:system_Start	0	static
+system.c:116:5:system_InterruptDisable	0	static
+system.c:140:5:system_InterruptEnable	0	static
+system.c:164:5:system_InterruptAcknowledge	8	static
+system.c:184:5:system_InterruptHandlerRegister	0	static
+system.c:204:5:system_InterruptHandlerUnregister	0	static

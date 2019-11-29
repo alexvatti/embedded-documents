@@ -1,0 +1,7 @@
+monitorRangeLimits.c:14:6:monitorRangeLimits_Reset	0	static
+monitorRangeLimits.c:23:5:monitorRangeLimits_Parse	16	static
+monitorRangeLimits.c:41:4:monitorRangeLimits_GetMaxHorizontalRate	0	static
+monitorRangeLimits.c:46:4:monitorRangeLimits_GetMaxPixelClock	0	static
+monitorRangeLimits.c:51:4:monitorRangeLimits_GetMaxVerticalRate	0	static
+monitorRangeLimits.c:56:4:monitorRangeLimits_GetMinHorizontalRate	0	static
+monitorRangeLimits.c:61:4:monitorRangeLimits_GetMinVerticalRate	0	static

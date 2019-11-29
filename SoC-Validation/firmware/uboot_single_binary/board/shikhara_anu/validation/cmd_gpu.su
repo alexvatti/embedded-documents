@@ -1,0 +1,2 @@
+cmd_gpu.c:35:5:do_gputest	0	static
+cmd_gpu.c:25:7:gpu_version	8	static

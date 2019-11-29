@@ -1,0 +1,8 @@
+cmd_apmouse.c:46:5:gic_check_irq	0	static
+cmd_apmouse.c:57:5:apMOUSE_GetData	0	static
+cmd_apmouse.c:72:5:apMOUSE_GetString	32	static
+cmd_apmouse.c:95:5:apMOUSE_GetXYB	16	static
+cmd_apmouse.c:153:5:mouse_init	16	static
+cmd_apmouse.c:220:5:mouse_read	32	static
+cmd_apmouse.c:139:5:apMOUSE_TEST	16	static
+cmd_apmouse.c:256:1:do_apmouse	8	static

@@ -1,0 +1,181 @@
+####################################################################
+#
+#
+#
+####################################################################
+
+:paths:
+	
+LIBDIR: MPEGDecoderLib
+APPDIR: MPEGDecoderApp
+
+ARCGCCDIR: /home/peters/bin/arc-gcc-20060612
+MWDIR: /tmp/nodelete/peters/MW_8.0.10/MetaWare/arc
+
+####################################################################
+#
+# tool setup
+#
+# NOTES: Only specify paths, executables and generic options here
+#        specific options (for types of build) come later
+#
+#
+####################################################################
+
+:tools:
+
+gnuarc: 
+	compiler) 	
+		name> arc-linux-uclibc-gcc
+		opt-all> -mA7 
+		opt-rel> -O2 
+		opt-dbg> -g
+	linker)		
+		name>  arc-linux-uclibc-gcc
+		opt-dbg> -g
+	archiver)	
+		name> arc-linux-uclibc-ar
+		opt-all> -cru
+	deps)		
+		name> arc-linux-uclibc-gcc
+		opt-all> -MM 
+
+gnupc: 
+	path) 	/usr/bin/
+	compiler) 	
+		name> gcc
+		opt-all> -c 
+		opt-rel> -O2 
+		opt-dbg> -g
+	linker)		
+		name> gcc
+		opt-dbg> -g
+	archiver)	
+		name> ar
+		opt-all> -cru 
+	deps)		
+		name> gcc
+		opt-all> -MM 
+
+mcc:
+	compiler) 	
+		name> mcc
+		opt-all> -arc700 -Mb -Hi -Hon=Long_enums -Xbarrel_shifter -Xlib -Xea -Xmin_max -Xnorm -Xswap -Xmpy  -Hon=Bool -w0 -Hsdata0  -Hinlfactor=900 -Hinlsize=260
+		opt-rel> -O6 
+		opt-dbg> -g
+	linker)		
+		name> mcc
+		opt-all> -arc700 -Xlib -Hhlsize=32768
+		opt-dbg> -g
+	archiver)	
+		name> arac
+		opt-all> -cru 
+	deps)		
+		name> mcc
+		opt-all> -Hsilent -Hrel -Hmake
+
+
+####################################################################
+#
+# Source file locations and groups
+#
+####################################################################
+
+:sources:
+basedir:   
+includes:  	${LIBDIR},${APPDIR}/Benchmark
+filegroups:		
+        wrapper) ${LIBDIR}: arc_mpeg.c , arc_avi.c
+	network) ${APPDIR}: arc_net.c
+        main)    ${APPDIR}: main.c , code.c, crc32.c, uncached_buf.c
+	benchmark)   ${APPDIR}: Benchmark/arc_benchmark.c, crc32.c
+	avatar)	${APPDIR}: avatar.c , crc32.c, arc_net.c
+subprojects:
+	libarcavcodec) ${LIBDIR}/libarcavcodec: libarcavcodec.a
+
+
+####################################################################
+#
+# Main build projects
+#
+####################################################################
+
+:builds:
+
+pcbuild:
+	type) bin
+        name) mpegdec
+	toolchain) gnupc
+		files>	   wrapper,main
+        subprojects) libarcavcodec
+	libtoolchain) gnupc
+        libraries)
+		opt-lib> stdc++
+
+mccbuild:
+	type) bin
+        name) mpegdec
+	toolchain) mcc
+		files>	   wrapper, main
+        subprojects) libarcavcodec
+	libtoolchain) mcc
+		opt-all> mpeg.cmd -Hldopt=-Csections -Hldopt=-Coutput=file.map
+
+gnubuild:
+	default)
+        name) mpegdec
+	type) bin
+	toolchain) gnuarc
+		files>	   wrapper, main
+        subprojects) libarcavcodec
+	libtoolchain) mcc
+		opt-all> -Hnocrt -z gnu -Hldopt=-Bdemandload -Hldopt=-Bpagesize=8192 -Hldopt=-Bgrouplib -B define:_start=__start -B define:___uClibc_main=__uClibc_main -B define:_uClibc_main=___uClibc_main
+	libraries)
+		opt-lib> ${ARCGCCDIR}/arc-linux-uclibc/lib:crt0.o,crti.o,libc.a
+		opt-lib> ${ARCGCCDIR}/lib/gcc/arc-elf32/3.4.6/arc700/:libgcc.a
+		opt-lib> ${MWDIR}/lib/a7/le:libct.a,libmw.a
+		opt-lib> /home/peters/build/MW/cpp/archive/a7_p/lobj_o:libcct.a
+
+####################################################################
+#
+# Project-independent options 
+#
+# Note: debug and release are also available, it is also valid
+#       to specify neither (i.e. default operation of the toolchain)
+#       but not both!
+#
+####################################################################
+
+:options:
+
+network:
+	addfiles) 	
+		groups> network
+		toolchain> gnuarc
+	addcflags)	-D__ARC_NET__
+linux:
+	addcflags)	-D__ARC_LINUX__ -D__ARC_MPLAYER__
+
+vlc:
+	addcflags)	-DARC_BITSTREAM_READER -DARC_BITSTREAM_DMA
+
+benchmark:
+	addfiles)
+		groups> benchmark
+		toolchain> mcc
+	addcflags)	-D__BENCHMARK__
+
+isogmc:
+	addcflags)	-DARCH_ARC_GMC_SUPPORT
+
+avatar:
+	addfiles) 	
+		groups> avatar
+		toolchain> gnuarc
+	addcflags)	-DAVATAR
+
+
+:end:
+
+
+

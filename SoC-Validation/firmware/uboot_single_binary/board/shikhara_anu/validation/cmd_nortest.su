@@ -1,0 +1,5 @@
+cmd_nortest.c:20:5:smc_nor_init	8	static
+cmd_nortest.c:28:5:do_smc_nor_init	8	static
+cmd_nortest.c:46:6:initbuff	8	static
+cmd_nortest.c:52:5:nor_post	24	static
+cmd_nortest.c:129:5:do_nortest	16	static

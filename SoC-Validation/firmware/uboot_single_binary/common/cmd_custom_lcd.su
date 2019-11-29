@@ -1,0 +1,10 @@
+cmd_custom_lcd.c:137:5:do_lcd_dump	8	static
+cmd_custom_lcd.c:74:5:clcd_poweron	0	static
+cmd_custom_lcd.c:83:5:clcd_power_off	8	static
+cmd_custom_lcd.c:428:5:do_lcd_disable	0	static
+cmd_custom_lcd.c:95:5:clcd_init	24	static
+cmd_custom_lcd.c:265:5:do_lcd_enable	8	static
+cmd_custom_lcd.c:165:6:lcd_color_pixel	28	static
+cmd_custom_lcd.c:190:6:lcd_color_bar	24	static
+cmd_custom_lcd.c:284:5:do_lcd_color_pattern	8	static
+cmd_custom_lcd.c:334:5:lcd_display_bitmap_custom	40	static

@@ -1,0 +1,6 @@
+halVideoPacketizer.c:19:4:halVideoPacketizer_PixelPackingPhase	8	static
+halVideoPacketizer.c:25:6:halVideoPacketizer_ColorDepth	16	static
+halVideoPacketizer.c:32:6:halVideoPacketizer_PixelPackingDefaultPhase	16	static
+halVideoPacketizer.c:38:6:halVideoPacketizer_PixelRepetitionFactor	16	static
+halVideoPacketizer.c:51:6:halVideoPacketizer_Ycc422RemapSize	16	static
+halVideoPacketizer.c:57:6:halVideoPacketizer_OutputSelector	16	static

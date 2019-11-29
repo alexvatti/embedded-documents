@@ -1,0 +1,718 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+
+
+#include "ArcSDMTables.h"
+#include "ArcMPC.h"
+
+
+//  showstalls
+setw                108
+metaware
+strict
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable IntraChromaPrediction, 3
+
+
+
+//------------------------------------------------------------------------------
+// Global Function Arguments
+p16                 intraValidFlag = i0 // same as luma
+p16                 intra_chroma_mode = i1
+p16                 intraChromaCost = i2
+
+//------------------------------------------------------------------------------
+// Intra Prediction Common Register Workspace
+vec16               Su <val0 : i0, val1, val2, val3>
+vec16               Sv <val0 : i0, val1, val2, val3>
+vec16               Su_shift <val0 : i0, val1, val2, val3>
+vec16               Sv_shift <val0 : i0, val1, val2, val3>
+
+s16                 gBestIntraChromaCost      : i0
+s16                 gBestIntraChromaMode      : gBestIntraChromaCost
+
+s16                 gUseIntraChromaDCPredOnly : i1
+pubreg              gUseIntraChromaDCPredOnly
+
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntra16x8Residual_Calculate16x8SAD
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.s GenerateIntra16x8Residual_Calculate16x8SAD
+    // function arguments
+
+begin
+    p16                 intra_chroma_modeOffset = i9 // intra_chroma_mode = i1
+
+    p16                 source_ptr
+    p16                 prediction_ptr
+    p16                 prediction_error_ptr
+
+    p16                 row
+
+    vec16               sad
+
+    vec16               source0
+    vec16               source1
+    vec16               source2
+    vec16               source3
+
+    vec16               prediction0
+    vec16               prediction1
+    vec16               prediction2
+    vec16               prediction3
+
+    vec16               prediction_error0
+    vec16               prediction_error1
+    vec16               prediction_error2
+    vec16               prediction_error3
+
+    // setup source and destination pointers
+    vim                 source_ptr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_U // will do both u and v
+
+    vmulw               'intra_chroma_modeOffset, 'intra_chroma_mode, (16*8) // 1 byte per pixel
+    vim                 prediction_ptr, intra_chroma_modeOffset, SDMOF_IntraPredictionChroma
+
+    vmulw               'intra_chroma_modeOffset, 'intra_chroma_mode, (16*8*2) // 2 bytes per pixel
+    vim                 prediction_error_ptr, intra_chroma_modeOffset, SDMOF_IntraPredictionResidsChroma
+
+    // reset sad value
+    vmovw               sad, 0
+
+    // setup loop counter
+    // 8 rows total, 2 rows per loop of both u and v
+    vmovw               'row, (8/2)-1
+
+
+    // rowLoop start
+label rowLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, source_ptr, 0
+    vld64w              source1, source_ptr, 8
+    vld64w              source2, source_ptr, 16
+    vld64w              source3, source_ptr, 24
+
+    // load prediction (8 bits per pixel)
+    vld64w              prediction0, prediction_ptr, 0
+    vld64w              prediction1, prediction_ptr, 8
+    vld64w              prediction2, prediction_ptr, 16
+    vld64w              prediction3, prediction_ptr, 24
+
+    // calculate residual (9 bits stored in 16 bits per pixel)
+    vsubw               prediction_error0, source0, prediction0
+    vsubw               prediction_error1, source1, prediction1
+    vsubw               prediction_error2, source2, prediction2
+    vsubw               prediction_error3, source3, prediction3
+
+    // store residual (16 bits per pixel)
+    vst128              prediction_error0, prediction_error_ptr, 0
+    vst128              prediction_error1, prediction_error_ptr, 16
+    vst128              prediction_error2, prediction_error_ptr, 32
+    vst128              prediction_error3, prediction_error_ptr, 48
+
+    // get absolute values
+    vabsw               prediction_error0, prediction_error0
+    vabsw               prediction_error1, prediction_error1
+    vabsw               prediction_error2, prediction_error2
+    vabsw               prediction_error3, prediction_error3
+
+    // accumulate sad for each column of 4 rows
+    vaddw               VZERO, prediction_error0, prediction_error1
+    vaddaw              VZERO, prediction_error2, prediction_error3
+    vaddaw              sad, sad, VZERO
+
+    // decrement and loop
+    vjd.row             row, .rowLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 source_ptr, source_ptr, PCB_CURRENT_STRIDE*1*2 // 16 pixels (both u and v), 1 byte per pixel, 2 rows
+~   vim                 prediction_ptr, prediction_ptr, 16*1*2 // 16 pixels (both u and v), 1 byte per pixel, 2 rows
+~   vim                 prediction_error_ptr, prediction_error_ptr, 16*2*2 // 16 pixels (both u and v), 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+    // calculate final sad by summing each column
+    vxsumw              'intraChromaCost, sad, 0xff
+
+end
+
+    // return to caller
+    vjb                 VSTACK, 0
+
+    // delay slots start
+
+    // compare with best cost and use new value if better or equal (this is so
+    // the that the mode processing order 2, 1, 0 is essentially reversed to
+    // give the priority 0, 1, 2 to match the C model)
+~   vsubw.f             VZERO, 'gBestIntraChromaCost, intraChromaCost
+~   vmivw.ge            'gBestIntraChromaCost, intraChromaCost
+~   vmivw.ge            'gBestIntraChromaMode, intra_chroma_mode
+
+    // delay slots end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntraChromaPrediction
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f GenerateIntraChromaPrediction
+    // function arguments
+    // intraValidFlag = i0
+
+	// wait for chroma in dma
+	vdmawait	0,0
+
+begin // 1
+    // setup global best cost value to max
+@   mov                 r0, 0x7fff
+    vmovw               'gBestIntraChromaCost, r0
+
+end
+
+
+    // vertical prediction (mode = 2)
+label verticalPrediction
+
+begin // 1
+    p16                 aboveOk
+
+    // check if above is valid
+    via                 aboveOk, intraValidFlag, 2
+    vjp!aboveOk         .horizontalPrediction
+
+    // delay slots start
+
+~end // 1
+
+~begin // 1
+~   p16                 useIntraChromaDCPredOnly
+
+~   vec16               A_u
+~   vec16               A_v
+
+    // accumulate intra prediction pixels A into S vectors for both u and v
+~   vld64w              A_u, FixBuf, MPO_U_IntraPredPixel
+~   vld64w              A_v, FixBuf, MPO_V_IntraPredPixel
+
+~   vxsumw              'Su_val0, A_u, 0x0f
+
+    // delay slots end
+
+    vxsumw              'Su_val1, A_u, 0xf0
+    vxsumw              'Sv_val0, A_v, 0x0f
+
+    // check if we are only doing dc prediction
+    viv.{gUseIntraChromaDCPredOnly} useIntraChromaDCPredOnly, gUseIntraChromaDCPredOnly
+    vjp.useIntraChromaDCPredOnly .horizontalPrediction
+
+    // delay slots start
+
+    // accumulate intra prediction pixels A into S vectors for both u and v
+~   vxsumw              'Sv_val1, A_v, 0xf0
+
+    // perform shift with rounding on S0 and S1
+~   vasrrw              'Su_shift_val0'Su_shift_val1, 'Su_val0'Su_val1, 2
+~   vasrrw              'Sv_shift_val0'Sv_shift_val1, 'Sv_val0'Sv_val1, 2
+
+    // delay slots end
+
+end // 1
+
+begin // 1
+    p16                 row
+
+    p16                 a_ptr
+    p16                 A_ptr
+
+    vec16               a
+    vec16               A
+
+    // setup global intra_chroma_mode mode value
+    vmovw               'intra_chroma_mode, MBIM_H264_C_VERTICAL
+
+    // setup destination and source pointers
+    vmovw               'a_ptr, SDMOF_IntraPredictionChroma + (MBIM_H264_C_VERTICAL * 16*8) // (u + v) 1 byte per pixel
+    // no need for a source pointer, as the prediction can just be load directly
+    //vim                 A_ptr, FixBuf, MPO_U_IntraPredPixel
+
+    // load prediction for both u and v. assumes MPO_U_IntraPredPixel is
+    // followed by MPO_V_IntraPredPixel
+    vld128              A, FixBuf, MPO_U_IntraPredPixel
+
+
+    // setup loop counter
+    // 8 rows total, 1 row per loop
+    vmovw               'row, 8-1
+
+    // rowLoop start
+label rowLoopVerticalPrediction
+
+    // decrement and loop
+    vjd.row             row, .rowLoopVerticalPrediction
+
+    // delay slots start
+
+    // store prediction for both u and v
+~   vst128              A, a_ptr, 0
+
+    // increament pointers
+~   vim                 a_ptr, a_ptr, 16 // 16 pixels (u + v), 1 byte per pixel, 1 row
+
+~   vnop
+    // delay slots end
+
+
+end // 1
+
+begin // 1
+    // generate residual
+    vjl                 VSTACK, .GenerateIntra16x8Residual_Calculate16x8SAD
+    
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+end // 1
+
+
+    // horizontal prediction (mode = 1)
+label horizontalPrediction
+
+begin // 1
+    p16                 leftOk
+
+    // check if left is valid
+    via                 leftOk, intraValidFlag, 1
+    vjp!leftOk          .dcPrediction
+
+    // delay slots start
+
+~end // 1
+
+~begin // 1
+~   p16                 row
+
+~   p16                 a_ptr
+~   p16                 E_u_ptr
+~   p16                 E_v_ptr
+
+~   vec16               a
+~   vec16               E
+
+    // setup global intra chroma mode value
+~   vmovw               'intra_chroma_mode, MBIM_H264_C_HORIZONTAL
+
+    // reset S2 and S3 so that they can be accumulated into over each iteration
+    // of the loop, for both u and v
+~   vmovw               'Su_val2'Su_val3, 0
+~   vmovw               'Sv_val2'Sv_val3, 0
+
+    // delay slots end
+
+    // setup destination and source pointers
+    vmovw               'a_ptr, SDMOF_IntraPredictionChroma + (MBIM_H264_C_HORIZONTAL * 16*8) // (u + v) 1 byte per pixel
+    vim                 E_u_ptr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*9/2-1
+    vim                 E_v_ptr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*9/2-1
+
+    // setup loop counter
+    // 8 rows total, 1 row per loop of both u and v
+    vmovw               'row, 8-1
+
+
+begin // 2 <- 1
+    p16                 EUTerm
+    p16                 EVTerm
+
+    vec16               rowVec
+
+    // rowLoop start
+label rowLoopHorizontalPrediction
+
+    // load 8 bit prediction
+    vld8w               'EUTerm, E_u_ptr, 0
+    vld8w               'EVTerm, E_v_ptr, 0
+
+    // compare row counter to see if we need to accumulate the E term into S2
+    // (i.e. first 4 rows 7, 6, 5 and 4) or S3 (i.e. last 4 rows 3, 2, 1 and 0)
+    // and broadcast flag across all lanes
+    vmivw               rowVec, row
+    vsubw.0xff.f        VZERO, rowVec, (8/2)-1 // halfway through 8 rows total, 1 row per loop of both u and v
+    
+    vaddw.gt            'Su_val2, 'Su_val2, EUTerm
+    vaddw.gt            'Sv_val2, 'Sv_val2, EVTerm
+
+    vaddw.le            'Su_val3, 'Su_val3, EUTerm
+    vaddw.le            'Sv_val3, 'Sv_val3, EVTerm
+
+    // duplicate prediction into vector register
+    vmivw.0x0f          E, EUTerm
+    vmivw.0xf0          E, EVTerm
+
+    // duplicate prediction into both bytes of the 16 bit lanes
+    vmulw               E, E, 0x0101
+
+    // store prediction
+    vst128              E, a_ptr, 0
+
+    // decrement and loop
+    vjd.row             row, .rowLoopHorizontalPrediction
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 a_ptr, a_ptr, 16 // 16 pixels (both u and v), 1 byte per pixel, 1 row
+~   vim                 E_u_ptr, E_u_ptr, PCB_RECONSTRUCTED_STRIDE
+~   vim                 E_v_ptr, E_v_ptr, PCB_RECONSTRUCTED_STRIDE
+
+    // delay slots end
+
+
+begin // 3
+    p16                 useIntraChromaDCPredOnly
+
+    // check if we are only doing dc prediction
+    viv.{gUseIntraChromaDCPredOnly} useIntraChromaDCPredOnly, gUseIntraChromaDCPredOnly
+    vjp.useIntraChromaDCPredOnly .dcPrediction
+
+    // delay slots start
+
+    // perform shift with rounding on S2 and S3
+~   vasrrw              'Su_shift_val2'Su_shift_val3, 'Su_val2'Su_val3, 2
+~   vasrrw              'Sv_shift_val2'Sv_shift_val3, 'Sv_val2'Sv_val3, 2
+
+~   vnop
+    // delay slots end
+
+
+end // 3
+
+end // 2 <- 1
+
+end // 1
+
+begin // 1
+    // generate residual
+    vjl                 VSTACK, .GenerateIntra16x8Residual_Calculate16x8SAD
+    
+    // delay slots start
+~   vnop
+~   vnop
+~   vnop
+    // delay slots end
+
+
+end // 1
+
+    // dc prediction (mode = 0)
+label dcPrediction
+
+begin // 1
+    p16                 a_ptr
+
+    vec16               intraValidFlagVec
+
+    vec16               UV_AB
+    vec16               UV_CD
+
+    // setup global intra chroma mode value
+    vmovw               'intra_chroma_mode, MBIM_H264_C_DC
+
+
+label dcAboveLeft
+
+begin // 2 <- 1
+    p16                 aboveOkLeftOk = i8 // intraValidFlag = i0 (Fix explicit lane until scanMP supports lane declarations based on other scalars)
+
+    // compare intraValidFlag to see if both above and left are available, if
+    // they're not then jump to try just above
+    vsubw               'aboveOkLeftOk, 'intraValidFlag, 3
+    vjp.aboveOkLeftOk   .dcAbove
+
+    // delay slots start
+
+~end // 2 <- 1
+
+~begin // 2 <- 1
+~   p16                 Su_val2_Temp
+~   p16                 Sv_val2_Temp
+~   p16                 Su_val3_Temp
+~   p16                 Sv_val3_Temp
+
+~   vec16               Su2 <val02 : Su_val0, val13 : Su_val1>
+~   vec16               Sv2 <val02 : Sv_val0, val13 : Sv_val1>
+
+~   vec16               Su_shift2 <val02 : Su2_val02, val13 : Su2_val13>
+~   vec16               Sv_shift2 <val02 : Sv2_val02, val13 : Sv2_val13>
+
+    // if both above and left are available
+    // A = (S0 + S2 + 4) >> 3
+    // B = (S1 + 2) >> 2
+    // C = (S3 + 2) >> 2
+    // D = (S1 + S3 + 4) >> 3
+    // load temp scalars ready for calculations
+~   viv                 Su_val2_Temp, 'Su_val2
+~   viv                 Sv_val2_Temp, 'Sv_val2
+
+~   viv                 Su_val3_Temp, 'Su_val3
+
+    // delay slots end
+
+    viv                 Sv_val3_Temp, 'Sv_val3
+
+    // calculate S0 + S2
+    vaddw               'Su2_val02, 'Su_val0, Su_val2_Temp
+    vaddw               'Sv2_val02, 'Sv_val0, Sv_val2_Temp
+
+    // calculate S1 + S3
+    vaddw               'Su2_val13, 'Su_val1, Su_val3_Temp
+    vaddw               'Sv2_val13, 'Sv_val1, Sv_val3_Temp
+
+    // perform shift with rounding on (S0+S2) and (S1+S3)
+    vasrrw              'Su_shift2_val02'Su_shift2_val13, 'Su2_val02'Su2_val13, 3
+    vasrrw              'Sv_shift2_val02'Sv_shift2_val13, 'Sv2_val02'Sv2_val13, 3
+
+    // calculate A and B for both u and v
+    vxsumw.0x03         UV_AB, Su_shift2_val02, 0x01 // need to explicitly fix until scanMP support added
+    vxsumw.0x0c         UV_AB, Su_shift_val1, 0x02 // need to explicitly fix until scanMP support added
+    vxsumw.0x30         UV_AB, Sv_shift2_val02, 0x01 // need to explicitly fix until scanMP support added
+    vxsumw.0xc0         UV_AB, Sv_shift_val1, 0x02 // need to explicitly fix until scanMP support added
+
+
+    // calculate C and D for both u and v
+    vxsumw.0x03         UV_CD, Su_shift_val3, 0x08 // need to explicitly fix until scanMP support added
+    vxsumw.0x0c         UV_CD, Su_shift2_val13, 0x02 // need to explicitly fix until scanMP support added
+    vxsumw.0x30         UV_CD, Sv_shift_val3, 0x08 // need to explicitly fix until scanMP support added
+
+    // jump to prediction generation
+    vjp                 .dcGeneratePrediction
+
+    // delay slots start
+
+~   vxsumw.0xc0         UV_CD, Sv_shift2_val13, 0x02 // need to explicitly fix until scanMP support added
+
+    // duplicate 8 bit prediction in each 16 bit lane to fill both byte positions
+~   vmulw               UV_AB, UV_AB, 0x0101
+~   vmulw               UV_CD, UV_CD, 0x0101
+
+    // delay slots end
+
+
+end // 2 <- 1
+
+
+label dcAbove
+
+begin // 2 <- 1
+    p16                 aboveOk = i8 // intraValidFlag = i0 (fix explicit lane until scanMP supports lane declarations based on other scalars)
+
+    // compare intraValidFlag to see if only above is available, if it isn't
+    // then jump to try just left
+    vsubw               'aboveOk, 'intraValidFlag, 2
+    vjp.aboveOk         .dcLeft
+
+    // delay slots start
+
+~end // 2 <- 1
+
+    // if only above is available
+    // A = (S0 + 2) >> 2
+    // B = (S1 + 2) >> 2
+    // C = A
+    // D = B
+    // calculate A and B for both u and v
+~   vxsumw.0x03         UV_AB, Su_shift_val0, 0x01 // need to explicitly hack until scanMP support added
+~   vxsumw.0x0c         UV_AB, Su_shift_val1, 0x02 // need to explicitly hack until scanMP support added
+~   vxsumw.0x30         UV_AB, Sv_shift_val0, 0x01 // need to explicitly hack until scanMP support added
+
+    // delay slots end
+
+    vxsumw.0xc0         UV_AB, Sv_shift_val1, 0x02 // need to explicitly hack until scanMP support added
+
+    // calculate C and D for both u and v
+    vxsumw.0x03         UV_CD, Su_shift_val0, 0x01 // need to explicitly hack until scanMP support added
+    vxsumw.0x0c         UV_CD, Su_shift_val1, 0x02 // need to explicitly hack until scanMP support added
+    vxsumw.0x30         UV_CD, Sv_shift_val0, 0x01 // need to explicitly hack until scanMP support added
+
+    // jump to prediction generation
+    vjp                 .dcGeneratePrediction
+
+    // delay slots start
+
+~   vxsumw.0xc0         UV_CD, Sv_shift_val1, 0x02 // need to explicitly hack until scanMP support added
+
+    // duplicate 8 bit prediction in each 16 bit lane to fill both byte positions
+~   vmulw               UV_AB, UV_AB, 0x0101
+~   vmulw               UV_CD, UV_CD, 0x0101
+
+    // delay slots end
+
+
+label dcLeft
+
+begin // 2 <- 1
+    p16                 leftOk = i8 // intraValidFlag = i0 (hack explicit lane until scanMP supports lane declarations based on other scalars)
+
+    // compare intraValidFlag to see if only above is available, if it isn't
+    // then jump to try just left
+    vsubw               'leftOk, 'intraValidFlag, 1
+    vjp.leftOk          .dcDefault
+
+    // delay slots start
+
+~end // 2 <- 1
+
+    // if only left is available
+    // A = (S2 + 2) >> 2
+    // B = A
+    // C = (S3 + 2) >> 2
+    // D = C
+    // calculate A and B for both u and v
+~   vxsumw.0x0f         UV_AB, Su_shift_val2, 0x04 // need to explicitly hack until scanMP support added
+~   vxsumw.0xf0         UV_AB, Sv_shift_val2, 0x04 // need to explicitly hack until scanMP support added
+
+    // calculate C and D for both u and v
+~   vxsumw.0x0f         UV_CD, Su_shift_val3, 0x08 // need to explicitly hack until scanMP support added
+
+    // delay slots end
+
+
+    // jump to prediction generation
+    vjp                 .dcGeneratePrediction
+
+    // delay slots start
+
+~   vxsumw.0xf0         UV_CD, Sv_shift_val3, 0x08 // need to explicitly hack until scanMP support added
+
+    // duplicate 8 bit prediction in each 16 bit lane to fill both byte positions
+~   vmulw               UV_AB, UV_AB, 0x0101
+~   vmulw               UV_CD, UV_CD, 0x0101
+
+    // delay slots end
+
+
+label dcDefault
+
+    // if neither above or left are available then use default of 128 (for both
+    // bytes of the lane)
+    // A = 128
+    // B = 128
+    // C = 128
+    // D = 128
+    // calculate A and B for both u and v
+@   mov                 r0, 0x8080
+    vmovw.0xff          UV_AB, r0
+
+    // calculate C and D for both u and v
+    vmovw.0xff          UV_CD, r0
+
+
+label dcGeneratePrediction
+
+    // setup destination pointer
+    vmovw               'a_ptr, SDMOF_IntraPredictionChroma + (MBIM_H264_C_DC * 16*8) // (u + v) 1 byte per pixel
+
+    // store prediction
+    vst128              UV_AB, a_ptr, 0
+    vst128              UV_AB, a_ptr, 16
+    vst128              UV_AB, a_ptr, 32
+    vst128              UV_AB, a_ptr, 48
+
+    vst128              UV_CD, a_ptr, 64
+
+    // generate residual and sad for both u and v
+    vjl                 VSTACK, .GenerateIntra16x8Residual_Calculate16x8SAD
+    
+    // delay slots start
+
+~   vst128              UV_CD, a_ptr, 80
+~   vst128              UV_CD, a_ptr, 96
+~   vst128              UV_CD, a_ptr, 112
+
+    // delay slots end
+
+
+end // 1
+
+begin // 1
+    // save result (only need to save mode, as cost is not used in inter/intra
+    // decision)
+    vst8                'gBestIntraChromaMode, CirBuf, MPO_WorkArea_BestIntraChromaMode
+
+end // 1
+
+    // signal end of simd code
+begin
+end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          SetIntraModeMPC
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func SetIntraModeMPC
+    p16                 sIdx        // Circular buffer index
+    // function arguments
+    pubreg              sIdx
+begin
+    vec16               intra < * lumaMode, chromaMode> = vr01 // fix until bug fixed in scanMP arbitary allocation and it supports a synonym for vr00 and vr01
+
+    p16                 intraMode
+
+    // read best intra luma and chroma modes
+    vld8w               'intra_lumaMode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+    vld8w               'intra_chromaMode, CirBuf, MPO_WorkArea_BestIntraChromaMode
+
+    // pack 4 bit values into a byte
+    vmulw               'intra_chromaMode, 'intra_chromaMode, 16 // fix until scanMP supports shifts, hould be (1 << INTRAMODE_CHROMA_SHIFT)
+    viv                 intraMode, intra
+
+    // store combined intra mode
+    vst8                'intraMode, CirBuf, MPO_IntraMode
+
+end
+
+    // signal end of simd code
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0, [r0, 0]
+@   mov                 r1, Service_IntraComplete
+    vsendi              r0, sIdx, 0
+    vsend               r0, r1, 63
+
+endfunc

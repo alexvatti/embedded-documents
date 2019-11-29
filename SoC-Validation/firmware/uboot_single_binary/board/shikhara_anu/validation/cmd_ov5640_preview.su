@@ -1,0 +1,12 @@
+cmd_ov5640_preview.c:335:12:ov5640_read_reg	24	static
+cmd_ov5640_preview.c:627:5:do_camera_detect	16	static
+cmd_ov5640_preview.c:347:12:ov5640_write_reg	24	static
+cmd_ov5640_preview.c:352:5:OV5640_set_AE_target	16	static
+cmd_ov5640_preview.c:375:5:OV5640_get_light_frequency	16	static
+cmd_ov5640_preview.c:406:5:OV5640_get_sysclk	48	static
+cmd_ov5640_preview.c:442:5:OV5640_get_HTS	16	static
+cmd_ov5640_preview.c:454:5:OV5640_get_VTS	16	static
+cmd_ov5640_preview.c:467:6:OV5640_set_bandingfilter	24	static
+cmd_ov5640_preview.c:507:6:OV5640_stream_on	0	static
+cmd_ov5640_preview.c:520:6:OV5640_stream_off	0	static
+cmd_ov5640_preview.c:582:5:do_camera_init	40	static

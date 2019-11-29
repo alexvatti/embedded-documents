@@ -1,0 +1,6 @@
+shikhara_hdmiaudio_new3.c:48:6:hdmi_mc_audiodma_reset	0	static
+shikhara_hdmiaudio_new3.c:53:6:hdmi_insert_pcuv	0	static
+shikhara_hdmiaudio_new3.c:284:6:hdmi_dma_irq_mute	0	static
+shikhara_hdmiaudio_new3.c:340:6:hdmi_mask_interrupts	16	static
+shikhara_hdmiaudio_new3.c:378:5:shikhara_hdmiaudio_init	32	static
+shikhara_hdmiaudio_new3.c:419:5:shikhara_hdmi_transfer_tx_data	32	static

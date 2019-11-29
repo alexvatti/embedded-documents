@@ -1,0 +1,4 @@
+tc_calibrate.c:72:13:DrawCalibrationPoint	16	static
+tc_calibrate.c:86:13:ClearCalibrationPoint	16	static
+tc_calibrate.c:94:6:measurement	24	static
+tc_calibrate.c:125:5:ts_calibrate	48	static

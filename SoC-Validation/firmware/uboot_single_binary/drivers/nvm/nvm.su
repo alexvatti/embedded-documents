@@ -1,0 +1,6 @@
+nvm.c:28:5:nvm_enable	0	static
+nvm.c:44:5:nvm_erase_word	16	static
+nvm.c:62:5:nvm_write_word	16	static
+nvm.c:81:5:nvm_read_word	16	static
+nvm.c:112:5:nvm_read_buff	24	static
+nvm.c:123:5:nvm_write_buff	24	static

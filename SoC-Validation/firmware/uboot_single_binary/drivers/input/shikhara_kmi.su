@@ -1,0 +1,10 @@
+shikhara_kmi.c:14:7:kbd_send_data	0	static
+shikhara_kmi.c:20:6:kbd_write	8	static
+shikhara_kmi.c:25:6:kbd_write_output	0	static
+shikhara_kmi.c:30:15:kbd_read	0	static
+shikhara_kmi.c:34:15:kbd_read_input	0	static
+shikhara_kmi.c:39:15:kbd_read_status	0	static
+shikhara_kmi.c:43:5:KMI_GetData	0	static
+shikhara_kmi.c:54:6:kmi_check1	0	static
+shikhara_kmi.c:59:6:kmi_check2	16	static
+shikhara_kmi.c:121:5:kmi_init	8	static

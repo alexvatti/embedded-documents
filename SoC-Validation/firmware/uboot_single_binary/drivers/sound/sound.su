@@ -1,0 +1,8 @@
+sound.c:61:5:sound_init	8	static
+sound.c:112:5:sound_sine	16	static
+sound.c:179:5:sound_square	32	static
+sound.c:231:5:sound_wave	32	static
+sound.c:280:5:hdmi_wave	32	static
+sound.c:369:5:sound_record	48	static
+sound.c:441:5:sound_beep	0	static
+sound.c:448:5:sound_sawtooth	0	static

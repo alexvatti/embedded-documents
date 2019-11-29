@@ -1,0 +1,4 @@
+shikhara_kmi_pc_keyb.c:171:6:kbd_read_data	8	static
+shikhara_kmi_pc_keyb.c:186:6:kbd_wait_for_input	8	static
+shikhara_kmi_pc_keyb.c:284:6:pckbd_leds	8	static
+shikhara_kmi_pc_keyb.c:294:5:kbd_init_hw	8	static

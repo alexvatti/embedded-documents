@@ -1,0 +1,3 @@
+cmd_shikhara_sw_cursor.c:94:6:copy_cursor_background_color	32	static
+cmd_shikhara_sw_cursor.c:128:6:restore_cursor_background_color	32	static
+cmd_shikhara_sw_cursor.c:21:13:do_lcd_soft_mousecursor	40	static

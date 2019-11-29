@@ -1,0 +1,7 @@
+halFrameComposerAudioInfo.c:24:6:halFrameComposerAudioInfo_ChannelCount	16	static
+halFrameComposerAudioInfo.c:30:6:halFrameComposerAudioInfo_SampleFreq	16	static
+halFrameComposerAudioInfo.c:36:6:halFrameComposerAudioInfo_AllocateChannels	16	static
+halFrameComposerAudioInfo.c:42:6:halFrameComposerAudioInfo_LevelShiftValue	16	static
+halFrameComposerAudioInfo.c:48:6:halFrameComposerAudioInfo_DownMixInhibit	16	static
+halFrameComposerAudioInfo.c:55:6:halFrameComposerAudioInfo_CodingType	16	static
+halFrameComposerAudioInfo.c:61:6:halFrameComposerAudioInfo_SamplingSize	16	static

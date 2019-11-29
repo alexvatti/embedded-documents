@@ -1,0 +1,10 @@
+halFrameComposerGamut.c:37:6:halFrameComposerGamut_Profile	16	static
+halFrameComposerGamut.c:44:6:halFrameComposerGamut_AffectedSeqNo	16	static
+halFrameComposerGamut.c:51:6:halFrameComposerGamut_PacketsPerFrame	16	static
+halFrameComposerGamut.c:58:6:halFrameComposerGamut_PacketLineSpacing	16	static
+halFrameComposerGamut.c:65:6:halFrameComposerGamut_Content	24	static
+halFrameComposerGamut.c:79:6:halFrameComposerGamut_EnableTx	16	static
+halFrameComposerGamut.c:85:6:halFrameComposerGamut_UpdatePacket	8	static
+halFrameComposerGamut.c:91:4:halFrameComposerGamut_CurrentSeqNo	8	static
+halFrameComposerGamut.c:97:4:halFrameComposerGamut_PacketSeq	8	static
+halFrameComposerGamut.c:103:4:halFrameComposerGamut_NoCurrentGbd	8	static

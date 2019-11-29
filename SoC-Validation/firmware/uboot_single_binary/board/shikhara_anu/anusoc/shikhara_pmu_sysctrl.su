@@ -1,0 +1,6 @@
+shikhara_pmu_sysctrl.c:14:6:hdmi_power_on	0	static
+shikhara_pmu_sysctrl.c:22:6:hdmi_power_off	0	static
+shikhara_pmu_sysctrl.c:30:6:display_power_on	0	static
+shikhara_pmu_sysctrl.c:38:6:display_power_off	0	static
+shikhara_pmu_sysctrl.c:46:6:csi_power_on	0	static
+shikhara_pmu_sysctrl.c:54:6:csi_power_off	0	static

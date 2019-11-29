@@ -1,0 +1,6 @@
+cmd_bmp.c:164:12:do_bmp	24	static
+cmd_bmp.c:309:12:do_lcd_bmp_display	24	static
+cmd_bmp.c:97:12:do_bmp_info	8	static
+cmd_bmp.c:269:12:do_dsi_bmp_display	24	static
+cmd_bmp.c:115:12:do_bmp_display	16	static
+cmd_bmp.c:91:14:gunzip_bmp	0	static

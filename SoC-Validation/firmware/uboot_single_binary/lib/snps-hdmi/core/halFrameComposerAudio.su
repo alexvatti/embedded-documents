@@ -1,0 +1,17 @@
+halFrameComposerAudio.c:27:6:halFrameComposerAudio_PacketSampleFlat	16	static
+halFrameComposerAudio.c:33:6:halFrameComposerAudio_PacketLayout	16	static
+halFrameComposerAudio.c:39:6:halFrameComposerAudio_ValidityRight	16	static
+halFrameComposerAudio.c:48:6:halFrameComposerAudio_ValidityLeft	16	static
+halFrameComposerAudio.c:57:6:halFrameComposerAudio_UserRight	16	static
+halFrameComposerAudio.c:66:6:halFrameComposerAudio_UserLeft	16	static
+halFrameComposerAudio.c:75:6:halFrameComposerAudio_IecCgmsA	16	static
+halFrameComposerAudio.c:81:6:halFrameComposerAudio_IecCopyright	16	static
+halFrameComposerAudio.c:87:6:halFrameComposerAudio_IecCategoryCode	16	static
+halFrameComposerAudio.c:93:6:halFrameComposerAudio_IecPcmMode	16	static
+halFrameComposerAudio.c:99:6:halFrameComposerAudio_IecSource	16	static
+halFrameComposerAudio.c:105:6:halFrameComposerAudio_IecChannelRight	16	static
+halFrameComposerAudio.c:121:6:halFrameComposerAudio_IecChannelLeft	16	static
+halFrameComposerAudio.c:137:6:halFrameComposerAudio_IecClockAccuracy	16	static
+halFrameComposerAudio.c:143:6:halFrameComposerAudio_IecSamplingFreq	16	static
+halFrameComposerAudio.c:149:6:halFrameComposerAudio_IecOriginalSamplingFreq	16	static
+halFrameComposerAudio.c:155:6:halFrameComposerAudio_IecWordLength	16	static

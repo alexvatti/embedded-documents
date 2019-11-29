@@ -1,0 +1,2 @@
+cmd_wdttest.c:84:6:watchdog_test	0	static
+cmd_wdttest.c:21:5:do_wdttest	16	static

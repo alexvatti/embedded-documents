@@ -1,0 +1,6 @@
+cmd_dwmmc.c:80:12:0	8	static
+cmd_dwmmc.c:101:5:do_dwmmcinfo	120	static
+cmd_dwmmc.c:374:5:do_dwmmc_1_blk_tx	112	static
+cmd_dwmmc.c:721:5:do_dwmmc_1_blk_rx	112	static
+cmd_dwmmc.c:1044:6:dwmci_dumpregs_err	8	static
+cmd_dwmmc.c:1101:5:do_dwmmc_dump	8	static

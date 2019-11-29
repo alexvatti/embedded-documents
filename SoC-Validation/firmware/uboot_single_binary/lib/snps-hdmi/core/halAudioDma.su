@@ -1,0 +1,16 @@
+halAudioDma.c:35:6:halAudioDma_ResetFifo	8	static
+halAudioDma.c:41:6:halAudioDma_HbrEnable	16	static
+halAudioDma.c:48:6:halAudioDma_HlockEnable	16	static
+halAudioDma.c:54:6:halAudioDma_FixBurstMode	16	static
+halAudioDma.c:61:6:halAudioDma_Start	8	static
+halAudioDma.c:67:6:halAudioDma_Stop	0	static
+halAudioDma.c:72:6:halAudioDma_Threshold	16	static
+halAudioDma.c:78:6:halAudioDma_StartAddress	16	static
+halAudioDma.c:87:6:halAudioDma_StopAddress	16	static
+halAudioDma.c:96:5:halAudioDma_CurrentOperationAddress	16	static
+halAudioDma.c:107:5:halAudioDma_CurrentBurstLength	16	static
+halAudioDma.c:116:6:halAudioDma_DmaInterruptMask	16	static
+halAudioDma.c:122:6:halAudioDma_BufferInterruptMask	16	static
+halAudioDma.c:128:4:halAudioDma_DmaInterruptMaskStatus	8	static
+halAudioDma.c:133:4:halAudioDma_BufferInterruptMaskStatus	0	static
+halAudioDma.c:138:6:halAudioDma_ChannelEnable	16	static

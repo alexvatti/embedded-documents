@@ -1,0 +1,8 @@
+shikhara_timer.c:170:20:get_ticks	20	static
+shikhara_timer.c:187:6:__udelay	24	static
+shikhara_timer.c:204:6:reset_timer_masked	0	static
+shikhara_timer.c:121:5:timer_init	8	static
+shikhara_timer.c:210:6:reset_timer	0	static
+shikhara_timer.c:215:7:get_timer_masked	16	static
+shikhara_timer.c:199:7:get_timer	8	static
+shikhara_timer.c:223:15:get_tbclk	0	static

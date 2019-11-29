@@ -1,0 +1,26 @@
+// (c) Arc international 2007
+// Creo vrapter ABI using MPC data structures
+// To co-operate with ME & EE hardware
+
+// Media processor ABI ---------------------------
+//	vec16				Scalars0 = vr00
+//	vec16				Scalars1 = vr01
+//	**	i0 - i3			Scalar params/scratch
+	p16					CirBuf = i4
+	p16					FixBuf = i5
+	p16					CirLeft = i6
+//	**	i7				scratch
+// 	**	i8 - i15 		Work - should be preserved
+//	**	vr01 - vr04		params
+//	**	vr05 - vr30		scratch
+	vec16				VZERO = vr62
+	vec16				VSTACK = vr31
+    vec16               VFLAGS = vr63
+
+// Media processor ABI end -----------------------
+
+
+// -----------------------------------------------
+// CirBuf, FixBuf , CirLeft are set by  "SetCurrentMPC" in ArcSDMTables_MPA.sss
+// -----------------------------------------------
+

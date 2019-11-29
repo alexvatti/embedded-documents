@@ -1,0 +1,6 @@
+halI2cMasterPhy.c:21:6:halI2cMasterPhy_SlaveAddress	16	static
+halI2cMasterPhy.c:27:6:halI2cMasterPhy_RegisterAddress	16	static
+halI2cMasterPhy.c:33:6:halI2cMasterPhy_WriteData	16	static
+halI2cMasterPhy.c:40:6:halI2cMasterPhy_WriteRequest	8	static
+halI2cMasterPhy.c:46:6:FhalI2cMasterPhy_FastMode	16	static
+halI2cMasterPhy.c:52:6:halI2cMasterPhy_Reset	8	static

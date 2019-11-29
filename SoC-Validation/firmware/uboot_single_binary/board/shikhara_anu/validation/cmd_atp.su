@@ -1,0 +1,4 @@
+cmd_atp.c:111:6:do_capture_frame_save	16	static
+cmd_atp.c:155:5:my_touch_read	24	static
+cmd_atp.c:43:5:preview_on_clcd_atp	24	static
+cmd_atp.c:179:5:do_atp_function	8	static

@@ -1,0 +1,2 @@
+cmd_mincan.c:84:6:can_mininit	8	static
+cmd_mincan.c:142:5:do_mincan	8	static

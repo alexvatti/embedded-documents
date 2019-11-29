@@ -1,0 +1,2247 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+    showstalls
+    setw                120
+    metaware
+    macrotable          Software_ME, 10
+    strict
+
+    include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#ifdef MPEG4BUILD
+#include "ArcMP4SDMTables.h"
+#else // MPEG4BUILD
+#include "ArcSDMTables.h"
+#endif // MPEG4BUILD
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init members of MPC circular buffer
+// Sets CirBuf
+// Sets FixBuf
+// Sets CirLeft
+
+
+//global scope needed as these vals needed for subroutine
+
+vec16 cur0, cur1, cur2, cur3 // vectors for holding the current data
+vec16 cur4, cur5, cur6, cur7 
+vec16 cur8, cur9, cur10, cur11
+//vec16 cur12, cur13, cur14, cur15
+vec16 result  = vr14
+p16 PredX = i0
+p16 PredY = i1
+p16 VecX = i2, VecY= i3
+p16 lastX =i10, lastY=i11 // same lanes as VecX and VecY
+p16 PatternMatch = i6
+p16 lambda = i7
+p16 BestCost = i8
+p16 StepMult = i12
+p16 RefPtr
+
+func Generate_Soft_ME_Response
+p16     IntraValid = i14
+pubreg  IntraValid
+p16     SkipVec = i15
+pubreg  SkipVec
+pubreg  BestCost
+
+begin
+
+
+
+// first get some params
+vmovw 'RefPtr, SDMOF_IntraPredictionResidsLuma
+
+vld16 'IntraValid, [RefPtr,0]
+vld16 'SkipVec,    [RefPtr,2]
+
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    // send channel commands
+    vsendi              r0, i14, 0
+    vsendi              r0, i15, 1
+
+@   mov                 r1, Service_ME_SDMResponse
+    vsendr              r0, r1, 63 // channel number not used at present
+
+    vsendi              r0, BestCost,0
+@   mov                 r1, Service_ME_InterResponse
+    vsendr              r0, r1, 63        // return to caller
+   // vjb                 VSTACK, 0
+   // ~vnop
+   // ~vnop
+   // ~vnop
+    
+end
+endfunc
+
+
+// function endofIter
+// this is called at the end of an integer step 
+// and it assumes that the relative zero displacement for the step
+// is set in Best Cost, whilst the other 8 position costs are in res0 - res8
+// StepMult is set to step displacement value for the previous step (4, 2, 1)
+// lambda is set up with the Rate Distortion lambda for the current quant
+// VecX and VecY represents the current origin and will get updated by the new displacement
+// lastx, lastY will contain the relative displacement of the last step - needed to realign the
+// reference area
+
+
+
+func.s endofIter
+begin //2
+p16 BestIndex = i15
+p16 newmin 
+vec16  horiz, vert, 
+vec16 CostVec
+vec16 temp, mask
+vec16 resinvert
+vec16 topbit
+p16 row
+regmap
+// find best position
+// we have a problem that most of the compare functions are signed
+// whereas our data is unsigned
+// get around this 
+    vmovw topbit, 0x8000
+    vxminw.255  CostVec, 'BestCost, 1
+
+// it's difficult to find argmin(vector)
+
+    vmovw           'BestIndex'lastX'lastY, 0 // in case (0,0) is best - these needt to be set for repositioning
+    vxor            resinvert, result, topbit // change to signed
+
+    vxor            CostVec, CostVec, topbit// change to signed for comparison
+    
+    vnew.f.255      VZERO, VZERO, VZERO // clear flags
+   
+    vltw.f.PatternMatch    mask, resinvert,CostVec // check to see if any are less than current best
+    vmovw!PatternMatch     mask, 0   // clear the ones we aren't interested in
+     
+    vclrstk.255     // clear sticky flags   // as above
+    vgmw            newmin, mask    // create bit mask for lanes that are less than best
+    
+    vmvw            mask, VZERO, 255        // may not need this, if no new min, but here to use stalls
+ 
+    vmovw           'RefPtr,  SDM_LANE_LOOKUP 
+    vjb!newmin      VSTACK,0  // if so, we can return, nothing left to do BestCost is left alone
+       
+~    vxminw.255      CostVec, resinvert,PatternMatch // put min out of those tested in every lane of CostVec
+~    vld128          temp, [RefPtr, 0]      // read lane look up vector
+~    vmovw  'RefPtr, SDM_ME_OFFSET_TABLE
+
+    vseqw.PatternMatch       resinvert, CostVec // get bit pattern of mins - but may have more than 1
+    vmvw.255.s      mask, temp                  // mask will contain the lane bits for the minima                                   
+   
+  
+    vld128 horiz, [RefPtr, 0]       // load offsets
+    vld128 vert,  [RefPtr, 16] 
+   
+    vxor            CostVec, CostVec, topbit    // put value back to unsigned
+    vxmaxw          'BestIndex, mask, 255       // chose the highest lane with the bigest val
+
+
+
+ 
+// initialise the 9 sums
+
+
+    vmvw.{BestCost} 'BestCost,CostVec // put into scalar to save vecs   
+    
+    
+    vmvw   'lastX'lastY, VZERO // set lastX and lastY to zero - already done ?
+
+    vmulw  horiz, horiz, StepMult 
+    vmulw  vert, vert, StepMult
+
+    // return to caller
+    vjb                 VSTACK, 0
+  ~ viv.BestIndex   lastX, horiz // get best horiz component
+  ~ viv.BestIndex   lastY, vert // get best horiz component
+  ~ vaddw 'VecX'VecY, 'VecX'VecY, 'lastX'lastY// // add to previous best vector
+
+
+end
+endfunc
+// subroutine to set up initial Rate Distortion costs for each of the 8 running sums
+func.s initRDvals
+
+begin
+vec16 horiz, vert
+regmap
+
+vmovw  'RefPtr, SDM_ME_OFFSET_TABLE
+vld128 horiz, [RefPtr, 0]
+vld128 vert,  [RefPtr, 16]
+// now start to set up Rate Distortion for next stage
+vmulw  horiz, horiz, StepMult // multiply by step multiplication
+vmulw  vert, vert, StepMult   // multiply by step multiplication
+
+vaddw horiz, horiz, VecX      // add the current vector component (centre of next step)
+vaddw  vert, vert , VecY       // add the current vector component
+
+vsubw  horiz, horiz, PredX     // subtract predicted vec component  
+vsubw  vert, vert, PredY       // subtract predicted vec component
+
+vabsw  horiz, horiz            // get magnitude of MVDx
+vabsw  vert, vert              // get magnitude of MVDy
+
+vnormw horiz, horiz            // this is effectively 16-log(base2) of the numbers
+vnormw vert,  vert             // this is effectively 16-log(base2) of the numbers
+vaddw  result, vert, horiz     // add both components together
+// result is now 32 - (log2(MVDx) + log2(MVDy))
+// actual bits are given by 2*log(base2) + 1 summed for x and y
+    // return to caller
+vjb                 VSTACK, 0
+~vaddw result, result, result  // double it to get 64 - 2*(log2(MVDx) + log2(MVDy))
+~vrsubw result, result, 62     // subtract from 64 and add 2 to get 2*(log2(MVDx) + log2(MVDy)) + 2
+~vmulw  result, result, lambda // multiply by current lambda
+
+
+
+end //1
+
+endfunc
+
+
+
+
+// function IntegerME - does a 3step search for a 16x16 Inter MB in the reference array
+// which is assumed to be 32x32 pixels arranged +/-8 around the current MB
+// the first step has 9 points
+// the second and third steps have 8 points each (missing out middle point 4)
+// PredX and PredY contain the predicted motion vector in 1/4 pel units
+// By the end of the function, VecX, VecY should have the best vector found, BestCost should have the best
+// RD cost and SDM_ME_REFERENCE_ARRAY should have the best integer location at offset 1 from the top and the right
+// edge of the 32*32 array.  This should make it easier for sub-pixel searches to be done
+func.f IntegerME
+
+
+
+
+begin //*** of function
+begin
+p16 skipVec = i15
+p16 IntraValid = i14
+
+
+// first park some params
+vmovw 'RefPtr, SDMOF_IntraPredictionResidsLuma
+//vmovw  'VecX'VecY, 0  // set vecs to zero
+
+vst16 'IntraValid, [RefPtr,0]
+vst16 'skipVec,    [RefPtr,2]
+end
+begin  //*** of scope of res4
+p16 res4= i13// only needed in first step
+begin //*** of RD initialisation for first step
+// initialise the 9 sums to the rate distortion approximation function
+// set each lane equal to this value
+// this sets the vectors res0 to res8 with the RD cost for each one's MV
+vec16 temp=vr20 // to make sure it doesn't conflict with anything in initRDvals
+vec16 tempres <Ptrx : PredX, Ptry : PredY>
+
+
+regmap
+// read quantiser
+
+
+//vmovw 'StepMult, 16 or 8// steps of 4 pels in 1/4 pel units this set by calling arc code
+vjl     VSTACK, .initRDvals
+// now do res4 which couldn't fit in the vector
+// it is (0,0)
+vnop
+vnop
+vnop
+/*
+~vabsw 'tempres_Ptrx'tempres_Ptry, 'PredX'PredY
+
+vnormw 'tempres_Ptrx'tempres_Ptry,'tempres_Ptrx'tempres_Ptry
+vxsumw.255 temp, 'tempres_Ptrx'tempres_Ptry, 3  // add the two and put in all lanes
+vmulw  temp, temp, 2
+vrsubw temp, temp, 62
+
+vmulw temp, temp, lambda
+vmvw.32 'res4, temp
+*/
+end //*** of initialisation of RD for first step
+begin //*** of first integer step
+vec16 ref0,ref1,ref2,ref3
+vec16 ref4,ref5,ref6,ref7
+vec16 temp0 
+vec16 temp1
+vec16 temp2
+vec16 temp3
+vec16 PartRes
+s16   Partres4:res4 // this will hold the (0,0) displacement SAD cost
+
+regmap
+    // setup loop counter 
+    // 16 rows total, 4 rows per loop
+ 
+// move reference pointer to point to (4,-4)
+//vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*3+ME_REFERENCE_ARRAY_STRIDE-23
+vdmawait 0x0, 0x7f
+//  The 9 points in the first step are done in this pattern :       
+//                                                                  
+//      res2 (-4,-4)   res1 (0,-4)    res0 (4,-4)                   
+//      res5 (-4, 0)   res4 (0, 0)    res3 (4, 0)                   
+//      res8 (-4, 4)   res7 (0, 4)    res6 (4, 4)                   
+//                                   
+vmovw   'RefPtr, SDM_ME_REFERENCE_ARRAY
+// load 4rows of 32 pels from reference                               
+// load 16 rows of current data - i.e. entire luma of MB
+vld128 cur0, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y ]
+vld128 cur1, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE]
+vld128 cur2, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*2]
+vld128 cur3, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*3]
+vld128 cur4, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*4]
+vld128 cur5, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*5]
+vld128 cur6, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*6]
+vld128 cur7, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*7]
+vld128 cur8, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*8]
+vld128 cur9, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*9]
+vld128 cur10, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*10]
+vld128 cur11, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*11]
+
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*4 + 16]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*4 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*5 + 16]
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*5 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*6 + 16]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*6 ]
+vld128 ref7, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*7 + 16]
+vld128 ref3, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*7 ]
+// accumulate sad for (4, -4) first 4 rows
+vmr2w  temp0, ref4, ref0
+vmr2w  temp1, ref5, ref1
+vmr2w  temp2, ref6, ref2
+vmr2w  temp3, ref7, ref3
+vsadbw.1 PartRes, cur0, temp0
+vsadbaw.1 PartRes, cur1, temp1
+vsadbaw.1 PartRes, cur2, temp2
+vsadbaw.1 PartRes, cur3, temp3
+
+// accumulate sad for (0, -4) first 4 rows
+vmr4w  temp0, ref4, ref0
+vmr4w  temp1, ref5, ref1
+vmr4w  temp2, ref6, ref2
+vmr4w  temp3, ref7, ref3
+vsadbw.2 PartRes, cur0, temp0
+vsadbaw.2 PartRes, cur1, temp1
+vsadbaw.2 PartRes, cur2, temp2
+vsadbaw.2 PartRes, cur3, temp3
+// accumulate sad for (-4, -4) first 4 rows
+vmr6w  temp0, ref4, ref0
+vmr6w  temp1, ref5, ref1
+vmr6w  temp2, ref6, ref2
+vmr6w  temp3, ref7, ref3
+vsadbw.4 PartRes, cur0, temp0
+vsadbaw.4 PartRes, cur1, temp1
+vsadbaw.4 PartRes, cur2, temp2
+vsadbaw.4 PartRes, cur3, temp3
+
+
+// load in next 4 rows of 32 pels of reference
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*8 + 16]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*8 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*9 + 16]
+
+vaddw.7 result, result, PartRes
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*9 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*10 + 16]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*10 ]
+vld128 ref7, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*11 + 16]
+vld128 ref3, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*11 ]
+
+// accumulate sad for (4, 0) first 4 rows
+// accumulate sad for (4,-4) second 4 rows
+vmr2w  temp0, ref4, ref0
+vmr2w  temp1, ref5, ref1
+vmr2w  temp2, ref6, ref2
+vmr2w  temp3, ref7, ref3
+vsadbw.8 PartRes, cur0, temp0
+vsadbaw.8 PartRes, cur1, temp1
+vsadbaw.8 PartRes, cur2, temp2
+vsadbaw.8 PartRes, cur3, temp3
+vsadbw.1 PartRes, cur4, temp0
+vsadbaw.1 PartRes, cur5, temp1
+vsadbaw.1 PartRes, cur6, temp2
+vsadbaw.1 PartRes, cur7, temp3
+
+
+vmr4w  temp0, ref4, ref0
+vmr4w  temp1, ref5, ref1
+vmr4w  temp2, ref6, ref2
+vmr4w  temp3, ref7, ref3
+
+//vsadbw 'Partres4, cur0, temp0
+//vsadbaw 'Partres4, cur1, temp1
+//vsadbaw 'Partres4, cur2, temp2
+//vsadbaw 'Partres4, cur3, temp3
+vsadbw.2 PartRes, cur4, temp0
+vsadbaw.2 PartRes, cur5, temp1
+vsadbaw.2 PartRes, cur6, temp2
+vsadbaw.2 PartRes, cur7, temp3
+
+vmr6w  temp0, ref4, ref0
+vmr6w  temp1, ref5, ref1
+vmr6w  temp2, ref6, ref2
+vmr6w  temp3, ref7, ref3
+
+vsadbw.16 PartRes, cur0, temp0
+vsadbaw.16 PartRes, cur1, temp1
+vsadbaw.16 PartRes, cur2, temp2
+vsadbaw.16 PartRes, cur3, temp3
+vsadbw.4 PartRes, cur4, temp0
+vsadbaw.4 PartRes, cur5, temp1
+vsadbaw.4 PartRes, cur6, temp2
+vsadbaw.4 PartRes, cur7, temp3
+
+// accumulate sad for (4, 4) first 4 rows
+// accumulate sad for (0, 4) second 4 rows
+// accumulate sad for (-4, 4) third 4 rows
+// accumulate sad for (0, 4) first 4 rows
+// accumulate sad for (0, 0) second 4 rows
+// accumulate sad for (0, -4) third 4 rows
+// accumulate sad for (-4, 4) first 4 rows
+// accumulate sad for (-4, 0) second 4 rows
+// accumulate sad for (-4, -4) third 4 rows
+// load next 4 rows of 32 pels
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*12 + 16]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*12 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*13 + 16]
+
+vaddw.31 result, result, PartRes
+//vaddw 'res4, 'res4, 'Partres4
+
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*13 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*14 + 16]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*14 ]
+vld128 ref7, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*15 + 16]
+vld128 ref3, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*15 ]
+
+
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.32 PartRes, cur0, temp0
+vsadbaw.32 PartRes, cur1, temp1
+vsadbaw.32 PartRes, cur2, temp2
+vsadbaw.32 PartRes, cur3, temp3
+
+vsadbw.8 PartRes, cur4, temp0
+vsadbaw.8 PartRes, cur5, temp1
+vsadbaw.8 PartRes, cur6, temp2
+vsadbaw.8 PartRes, cur7, temp3
+
+vsadbw.1 PartRes, cur8, temp0
+vsadbaw.1 PartRes, cur9, temp1
+vsadbaw.1 PartRes, cur10, temp2
+vsadbaw.1 PartRes, cur11, temp3
+
+vmr4w temp0, ref4, ref0
+vmr4w temp1, ref5, ref1
+vmr4w temp2, ref6, ref2
+vmr4w temp3, ref7, ref3
+
+vsadbw.64 PartRes, cur0, temp0
+vsadbaw.64 PartRes, cur1, temp1
+vsadbaw.64 PartRes, cur2, temp2
+vsadbaw.64 PartRes, cur3, temp3
+//vsadbw 'Partres4, cur4, temp0
+//vsadbaw 'Partres4, cur5, temp1
+//vsadbaw 'Partres4, cur6, temp2
+//vsadbaw 'Partres4, cur7, temp3
+vsadbw.2 PartRes, cur8, temp0
+vsadbaw.2 PartRes, cur9, temp1
+vsadbaw.2 PartRes, cur10, temp2
+vsadbaw.2 PartRes, cur11, temp3
+
+vmr6w temp0, ref4, ref0
+vmr6w temp1, ref5, ref1
+vmr6w temp2, ref6, ref2
+vmr6w temp3, ref7, ref3
+
+vsadbw.128 PartRes, cur0, temp0
+vsadbaw.128 PartRes, cur1, temp1
+vsadbaw.128 PartRes, cur2, temp2
+vsadbaw.128 PartRes, cur3, temp3
+vsadbw.16 PartRes, cur4, temp0
+vsadbaw.16 PartRes, cur5, temp1
+vsadbaw.16 PartRes, cur6, temp2
+vsadbaw.16 PartRes, cur7, temp3
+vsadbw.4 PartRes, cur8, temp0
+vsadbaw.4 PartRes, cur9, temp1
+vsadbaw.4 PartRes, cur10, temp2
+vsadbaw.4 PartRes, cur11, temp3
+
+// accumulate sad for (4, 4) second 4 rows
+// accumulate sad for (4, 0) third 4 rows
+// accumulate sad for (4, -4) last 4 rows
+// accumulate sad for (0, 4) second 4 rows
+// accumulate sad for (0, 0)  third 4 rows
+// accumulate sad for (0, -4) last 4 rows
+// accumulate sad for (-4, 4) second 4 rows
+// accumulate sad for (-4, 0) third 4 rows
+// accumulate sad for (-4, -4) last 4 rows
+vld128 cur0, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*12]
+vld128 cur1, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*13]
+vld128 cur2, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*14]
+
+vaddw.255 result, result, PartRes
+//vaddw 'res4, 'res4, 'Partres4
+
+vld128 cur3, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*15]
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*16 + 16]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*16 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*17 + 16]
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*17 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*18 + 16]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*18 ]
+vld128 ref7, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*19 + 16]
+vld128 ref3, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*19 ]
+
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.32 PartRes, cur4, temp0
+vsadbaw.32 PartRes, cur5, temp1
+vsadbaw.32 PartRes, cur6, temp2
+vsadbaw.32 PartRes, cur7, temp3
+vsadbw.8 PartRes, cur8, temp0
+vsadbaw.8 PartRes, cur9, temp1
+vsadbaw.8 PartRes, cur10, temp2
+vsadbaw.8 PartRes, cur11, temp3
+vsadbw.1 PartRes, cur0, temp0
+vsadbaw.1 PartRes, cur1, temp1
+vsadbaw.1 PartRes, cur2, temp2
+vsadbaw.1 PartRes, cur3, temp3
+
+vmr4w temp0, ref4, ref0
+vmr4w temp1, ref5, ref1
+vmr4w temp2, ref6, ref2
+vmr4w temp3, ref7, ref3
+vsadbw.64 PartRes, cur4, temp0
+vsadbaw.64 PartRes, cur5, temp1
+vsadbaw.64 PartRes, cur6, temp2
+vsadbaw.64 PartRes, cur7, temp3
+//vsadbw 'Partres4, cur8, temp0
+//vsadbaw 'Partres4, cur9, temp1
+//vsadbaw 'Partres4, cur10, temp2
+//vsadbaw 'Partres4, cur11, temp3
+vsadbw.2 PartRes, cur0, temp0
+vsadbaw.2 PartRes, cur1, temp1
+vsadbaw.2 PartRes, cur2, temp2
+vsadbaw.2 PartRes, cur3, temp3
+
+vmr6w temp0, ref4, ref0
+vmr6w temp1, ref5, ref1
+vmr6w temp2, ref6, ref2
+vmr6w temp3, ref7, ref3
+vsadbw.128 PartRes, cur4, temp0
+vsadbaw.128 PartRes, cur5, temp1
+vsadbaw.128 PartRes, cur6, temp2
+vsadbaw.128 PartRes, cur7, temp3
+vsadbw.16 PartRes, cur8, temp0
+vsadbaw.16 PartRes, cur9, temp1
+vsadbaw.16 PartRes, cur10, temp2
+vsadbaw.16 PartRes, cur11, temp3
+vsadbw.4 PartRes, cur0, temp0
+vsadbaw.4 PartRes, cur1, temp1
+vsadbaw.4 PartRes, cur2, temp2
+vsadbaw.4 PartRes, cur3, temp3
+
+// accumulate sad for (4, 4) third 4 rows
+// accumulate sad for (4, 0) last 4 rows
+// accumulate sad for (0, 4) third 4 rows
+// accumulate sad for (0, 0) last 4 rows
+// accumulate sad for (-4, 4) third 4 rows
+// accumulate sad for (-4, 0) last 4 rows
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*20 + 16]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*20 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*21 + 16]
+
+vaddw.255 result, result, PartRes
+//vaddw 'res4, 'res4, 'Partres4
+
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*21 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*22 + 16]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*22 ]
+vld128 ref7, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*23 + 16]
+vld128 ref3, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*23 ]
+
+
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.32 PartRes, cur8, temp0
+vsadbaw.32 PartRes, cur9, temp1
+vsadbaw.32 PartRes, cur10, temp2
+vsadbaw.32 PartRes, cur11, temp3
+
+vsadbw.8 PartRes, cur0, temp0
+vsadbaw.8 PartRes, cur1, temp1
+vsadbaw.8 PartRes, cur2, temp2
+vsadbaw.8 PartRes, cur3, temp3
+
+vmr4w temp0, ref4, ref0
+vmr4w temp1, ref5, ref1
+vmr4w temp2, ref6, ref2
+vmr4w temp3, ref7, ref3
+vsadbw.64 PartRes, cur8, temp0
+vsadbaw.64 PartRes, cur9, temp1
+vsadbaw.64 PartRes, cur10, temp2
+vsadbaw.64 PartRes, cur11, temp3
+//vsadbw 'Partres4, cur0, temp0
+//vsadbaw 'Partres4, cur1, temp1
+//vsadbaw 'Partres4, cur2, temp2
+//vsadbaw 'Partres4, cur3, temp3
+
+vmr6w  temp0, ref4, ref0
+vmr6w  temp1, ref5, ref1
+vmr6w  temp2, ref6, ref2
+vmr6w  temp3, ref7, ref3
+vsadbw.128 PartRes, cur8, temp0
+vsadbaw.128 PartRes, cur9, temp1
+vsadbaw.128 PartRes, cur10, temp2
+vsadbaw.128 PartRes, cur11, temp3
+vsadbw.16 PartRes, cur0, temp0
+vsadbaw.16 PartRes, cur1, temp1
+vsadbaw.16 PartRes, cur2, temp2
+vsadbaw.16 PartRes, cur3, temp3
+
+// accumulate sad for (4, 4) last 4 rows
+// accumulate sad for (4, 0) last 4 rows
+// accumulate sad for (4, 4) last 4 rows
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*24 + 16]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*24 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*25 + 16]
+
+vaddw.248 result, result, PartRes // not top 3 sums
+//vaddw 'res4, 'res4, 'Partres4
+
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*25 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*26 + 16]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*26 ]
+vld128 ref7, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*27 + 16]
+vld128 ref3, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*27 ]
+
+vmr2w  temp0, ref4, ref0
+vmr2w  temp1, ref5, ref1
+vmr2w  temp2, ref6, ref2
+vmr2w  temp3, ref7, ref3
+vsadbw.32 PartRes, cur0, temp0
+vsadbaw.32 PartRes, cur1, temp1
+vsadbaw.32 PartRes, cur2, temp2
+vsadbaw.32 PartRes, cur3, temp3
+
+vmr4w  temp0, ref4, ref0
+vmr4w  temp1, ref5, ref1
+vmr4w  temp2, ref6, ref2
+vmr4w  temp3, ref7, ref3
+vsadbw.64 PartRes, cur0, temp0
+vsadbaw.64 PartRes, cur1, temp1
+vsadbaw.64 PartRes, cur2, temp2
+vsadbaw.64 PartRes, cur3, temp3
+vmr6w  temp0, ref4, ref0
+vmr6w  temp1, ref5, ref1
+vmr6w  temp2, ref6, ref2
+vmr6w  temp3, ref7, ref3
+vsadbw.128 PartRes, cur0, temp0
+vsadbaw.128 PartRes, cur1, temp1
+vsadbaw.128 PartRes, cur2, temp2
+vsadbaw.128 PartRes, cur3, temp3
+
+//move16 BestCost, res4 //- this now done in stepOne, but should be the same
+
+vaddw.224 result, result, PartRes
+
+
+end //*** of first integer step
+end //*** end of scope of res4
+vjl                 VSTACK, .endofIter
+
+~vnop
+~vnop
+~vnop
+
+begin //*** of repositioning of reference data
+// we need to shift the reference array so that the data is placed in the top right of the reference array
+
+// this depends on the VecX and VecY
+p16 offset
+p16 NewPtr, counter
+vec16 ref0, ref1
+regmap
+
+// start at (4+lastY)*ME_REFERENCE_ARRAY_STRIDE  SDM_ME_REFERENCE_ARRAY
+#ifdef MPEG4BUILD
+vim   offset, lastY, 8       // contains 0, 8, or 16
+vmovw 'counter, 24-1                            // we need 16 + 4 + 4 rows in ref
+vmulw 'offset, 'offset, ME_REFERENCE_ARRAY_STRIDE/2
+#else 
+vim   offset, lastY, 16       // contains 0, 16, or 32
+vmovw 'counter, 24-1                            // we need 16 + 4 + 4 rows in ref
+vmulw 'offset, 'offset, ME_REFERENCE_ARRAY_STRIDE/4
+#endif // MPEG4BUILD
+
+
+  
+vjp!lastX              .ShiftZero                // if zero displacement horiz
+~vmovw 'NewPtr, SDM_ME_REFERENCE_ARRAY - ME_REFERENCE_ARRAY_STRIDE // destination pointer
+~vim   RefPtr, offset, SDM_ME_REFERENCE_ARRAY  // source pointer
+#ifdef MPEG4BUILD
+~vim     offset, lastX, 8  
+#else
+~vim     offset, lastX, 16    
+#endif
+
+vjp!offset            .ShiftLeft4              // if disp by -4 horiz
+~vnop
+~vnop
+~vnop
+
+begin // 1
+vec16 ref1_shift
+
+label ShiftRight4                                // displacement by 4 horiz
+// we need to shift along by 8 pels
+
+// load two continguous vectors
+vld128  ref1, [RefPtr, 16]
+vld128  ref0, [RefPtr, 0]
+
+// increment counters
+vim NewPtr, NewPtr, ME_REFERENCE_ARRAY_STRIDE
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE
+
+vsr8    ref1_shift, ref1, 8    // shift left one by 8 - we won't use first 8 pels
+vmr4w   ref0, ref1,ref0  // shift by 8 
+
+
+vjd.counter     counter, .ShiftRight4
+~vst128  ref1_shift, [NewPtr, 16]  // store 16 pels
+~vst128  ref0, [NewPtr,0] // store 8 pels
+~vnop
+
+end // 1
+
+vjp                 .EndShift4
+~vnop
+~vnop
+~vnop
+
+begin // 1
+vec16 ref1_shift
+
+label    ShiftZero
+// zero pos horizontally - need to shift right by 4 pels
+
+vld128  ref1, [RefPtr, 16]
+vld128  ref0, [RefPtr, 0]
+
+vim NewPtr, NewPtr, ME_REFERENCE_ARRAY_STRIDE
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE
+
+vsr8   ref1_shift, ref1, 4    // shift by 4 pels
+vmr2w  ref0, ref1,ref0 // shift by 4 pels 
+
+vjd.counter     counter, .ShiftZero
+~vst128  ref1_shift, [NewPtr, 16]
+~vst128  ref0, [NewPtr,0] 
+~vnop
+
+end // 1
+
+vjp                 .EndShift4
+~vnop
+~vnop
+~vnop
+
+
+label ShiftLeft4
+// best x direction was -4
+// this means that we only need to shift the rows really
+
+
+vld128  ref1, [RefPtr, 16]
+vld128  ref0, [RefPtr, 0]
+
+vim NewPtr, NewPtr, ME_REFERENCE_ARRAY_STRIDE
+
+vjd.counter     counter, .ShiftLeft4
+~vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE
+~vst128  ref1, [NewPtr, 16]
+~vst128  ref0, [NewPtr,0]
+
+
+label EndShift4
+end //*** of repositioning of reference data
+begin //*** of second integer step
+// now do +/- 2  step search 
+vec16 ref0,  ref4, 
+vec16 ref1, ref5
+vec16 ref2, ref6
+vec16 ref3, ref7
+vec16 temp0, temp1, temp2, temp3
+vec16 PartRes
+p16 flag
+vec16 topbit
+regmap
+//vmovw 'StepMult, 8 // steps of 2 pels in 1/4 pel units
+vasrw 'StepMult, 'StepMult, 1
+
+vjl     VSTACK, .initRDvals
+~vld128 cur0, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y ]
+~vld128 cur1, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE]
+~vld128 cur2, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*2]
+
+
+vmovw 'RefPtr, SDM_ME_REFERENCE_ARRAY
+// accumulate sad for (2, -2) first 4 rows
+//find next 4 pels
+// accumulate sad for (0, -2) first 4 rows
+// find -2 location
+// accumulate sad for (-2, -2) first 4 rows
+
+
+vld128 cur3, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*3]
+vld128 ref4, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*2 + 16 ]
+vld128 ref0, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*2 ]
+vld128 ref5, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*3 + 16]
+vld128 ref1, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*3 ]
+vld128 ref6, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*4 + 16 ]
+vld128 ref2, [RefPtr, ME_REFERENCE_ARRAY_STRIDE*4 ]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*5 + 16 ]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*5 ]
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.1 PartRes, cur0, temp0
+vsadbaw.1 PartRes, cur1, temp1
+vsadbaw.1 PartRes, cur2, temp2
+vsadbaw.1 PartRes, cur3, temp3
+vsadbw.8 PartRes, cur0, temp2
+vsadbaw.8 PartRes, cur1, temp3
+
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.2 PartRes, cur0, temp0
+vsadbaw.2 PartRes, cur1, temp1
+vsadbaw.2 PartRes, cur2, temp2
+vsadbaw.2 PartRes, cur3, temp3
+
+vmr3w temp0, ref4, ref0
+vmr3w temp1, ref5, ref1
+vmr3w temp2, ref6, ref2
+vmr3w temp3, ref7, ref3
+vsadbw.4 PartRes, cur0, temp0
+vsadbaw.4 PartRes, cur1, temp1
+vsadbaw.4 PartRes, cur2, temp2
+vsadbaw.4 PartRes, cur3, temp3
+vsadbw.16 PartRes, cur1, temp3
+vsadbaw.16 PartRes, cur0, temp2
+
+// accumulate sad for (2, 0) first  rows 2- 6
+// accumulate sad for (2, -2) second 4 rows
+// accumulate sad for (0, -2) second 4 rows
+// accumulate sad for (-2, 0) first 4 rows
+// accumulate sad for (-2, -2) second 4 rows
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*6 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*6 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*7 + 16 ]
+
+vaddw.31 result, result, PartRes 
+
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*7 ]
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*8 + 16 ]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*8 ]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*9 + 16]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*9 ]
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.32 PartRes, cur0, temp0
+vsadbaw.32 PartRes, cur1, temp1
+vsadbaw.32 PartRes, cur2, temp2
+vsadbaw.32 PartRes, cur3, temp3
+vsadbw.8 PartRes, cur2, temp0
+vsadbaw.8 PartRes, cur3, temp1
+vsadbaw.8 PartRes, cur4, temp2
+vsadbaw.8 PartRes, cur5, temp3
+vsadbw.1 PartRes, cur4, temp0
+vsadbaw.1 PartRes, cur5, temp1
+vsadbaw.1 PartRes, cur6, temp2
+vsadbaw.1 PartRes, cur7, temp3
+
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.64 PartRes, cur0, temp0
+vsadbaw.64 PartRes, cur1, temp1
+vsadbaw.64 PartRes, cur2, temp2
+vsadbaw.64 PartRes, cur3, temp3
+vsadbw.2 PartRes, cur4, temp0
+vsadbaw.2 PartRes, cur5, temp1
+vsadbaw.2 PartRes, cur6, temp2
+vsadbaw.2 PartRes, cur7, temp3
+vmr3w temp0, ref4, ref0
+vmr3w temp1, ref5, ref1
+vmr3w temp2, ref6, ref2
+vmr3w temp3, ref7, ref3
+vsadbw.128 PartRes, cur0, temp0
+vsadbaw.128 PartRes, cur1, temp1
+vsadbaw.128 PartRes, cur2, temp2
+vsadbaw.128 PartRes, cur3, temp3
+vsadbw.16 PartRes, cur2, temp0
+vsadbaw.16 PartRes, cur3, temp1
+vsadbaw.16 PartRes, cur4, temp2
+vsadbaw.16 PartRes, cur5, temp3
+vsadbw.4 PartRes, cur4, temp0
+vsadbaw.4 PartRes, cur5, temp1
+vsadbaw.4 PartRes, cur6, temp2
+vsadbaw.4 PartRes, cur7, temp3
+
+// accumulate sad for (2, 0) first  rows 2- 6
+// accumulate sad for (2, -2) second 4 rows
+// accumulate sad for (0, -2) second 4 rows
+
+// accumulate sad for (-2, 0) first 4 rows
+// accumulate sad for (-2, -2) second 4 rows
+
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*10 + 16 ]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*10 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*11 + 16 ]
+
+vaddw.255 result, result, PartRes
+
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*11 ]
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*12 + 16]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*12 ]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*13 + 16 ]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*13 ]
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.32 PartRes, cur4, temp0
+vsadbaw.32 PartRes, cur5, temp1
+vsadbaw.32 PartRes, cur6, temp2
+vsadbaw.32 PartRes, cur7, temp3
+vsadbw.8 PartRes, cur6, temp0
+vsadbaw.8 PartRes, cur7, temp1
+vsadbaw.8 PartRes, cur8, temp2
+vsadbaw.8 PartRes, cur9, temp3
+vsadbw.1 PartRes, cur8, temp0
+vsadbaw.1 PartRes, cur9, temp1
+vsadbaw.1 PartRes, cur10, temp2
+vsadbaw.1 PartRes, cur11, temp3
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.64 PartRes, cur4, temp0
+vsadbaw.64 PartRes, cur5, temp1
+vsadbaw.64 PartRes, cur6, temp2
+vsadbaw.64 PartRes, cur7, temp3
+vsadbw.2 PartRes, cur8, temp0
+vsadbaw.2 PartRes, cur9, temp1
+vsadbaw.2 PartRes, cur10, temp2
+vsadbaw.2 PartRes, cur11, temp3
+vmr3w temp0, ref4, ref0
+vmr3w temp1, ref5, ref1
+vmr3w temp2, ref6, ref2
+vmr3w temp3, ref7, ref3
+vsadbw.128 PartRes, cur4, temp0
+vsadbaw.128 PartRes, cur5, temp1
+vsadbaw.128 PartRes, cur6, temp2
+vsadbaw.128 PartRes, cur7, temp3
+vsadbw.16 PartRes, cur6, temp0
+vsadbaw.16 PartRes, cur7, temp1
+vsadbaw.16 PartRes, cur8, temp2
+vsadbaw.16 PartRes, cur9, temp3
+vsadbw.4 PartRes, cur8, temp0
+vsadbaw.4 PartRes, cur9, temp1
+vsadbaw.4 PartRes, cur10, temp2
+vsadbaw.4 PartRes, cur11, temp3
+
+// accumulate sad for (2, 0) first  rows 2- 6
+// accumulate sad for (2, -2) second 4 rows
+// accumulate sad for (0, -2) second 4 rows
+// accumulate sad for (-2, 0) first 4 rows
+// accumulate sad for (-2, -2) second 4 rows
+
+vld128 cur0, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*12]
+vld128 cur1, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*13]
+vld128 cur2, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*14]
+
+vaddw.255 result, result, PartRes
+
+vld128 cur3, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*15]
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*14 + 16 ]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*14]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*15 + 16 ]
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*15]
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*16 + 16 ]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*16]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*17 + 16 ]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*17 ]
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.32 PartRes, cur8, temp0
+vsadbaw.32 PartRes, cur9, temp1
+vsadbaw.32 PartRes, cur10, temp2
+vsadbaw.32 PartRes, cur11, temp3
+vsadbw.8 PartRes, cur10, temp0
+vsadbaw.8 PartRes, cur11, temp1
+vsadbaw.8 PartRes, cur0, temp2
+vsadbaw.8 PartRes, cur1, temp3
+vsadbw.1 PartRes, cur0, temp0
+vsadbaw.1 PartRes, cur1, temp1
+vsadbaw.1 PartRes, cur2, temp2
+vsadbaw.1 PartRes, cur3, temp3
+vmr2w   temp0,  ref4, ref0
+vmr2w   temp1,  ref5, ref1
+vmr2w   temp2,  ref6, ref2
+vmr2w   temp3,  ref7, ref3
+vsadbw.64 PartRes,   cur8, temp0
+vsadbaw.64 PartRes,   cur9, temp1
+vsadbaw.64 PartRes,   cur10, temp2
+vsadbaw.64 PartRes,   cur11, temp3
+vsadbw.2 PartRes,   cur0, temp0
+vsadbaw.2 PartRes,   cur1, temp1
+vsadbaw.2 PartRes,   cur2, temp2
+vsadbaw.2 PartRes,   cur3, temp3
+vmr3w temp0, ref4, ref0
+vmr3w temp1, ref5, ref1
+vmr3w temp2, ref6, ref2
+vmr3w temp3, ref7, ref3
+vsadbw.128 PartRes, cur8, temp0
+vsadbaw.128 PartRes, cur9, temp1
+vsadbaw.128 PartRes, cur10, temp2
+vsadbaw.128 PartRes, cur11, temp3
+vsadbw.16 PartRes, cur10, temp0
+vsadbaw.16 PartRes, cur11, temp1
+vsadbaw.16 PartRes, cur0, temp2
+vsadbaw.16 PartRes, cur1, temp3
+vsadbw.4 PartRes, cur0, temp0
+vsadbaw.4 PartRes, cur1, temp1
+vsadbaw.4 PartRes, cur2, temp2
+vsadbaw.4 PartRes, cur3, temp3
+
+// accumulate sad for (2, 0) first  rows 2- 6
+// accumulate sad for (-2, 0) first 4 rows
+
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*18 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*18 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*19 + 16 ]
+
+vaddw.255 result, result, PartRes
+vmovw topbit, 0x8000
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*19 ]
+vxor temp0, result, topbit
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*20 + 16]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*20 ]
+
+//check here if all partial results are already greater than current origin
+
+vxminw.255 temp0, temp0, PatternMatch
+vxor 'BestCost, 'BestCost, topbit
+vltw.1 flag, temp0, 'BestCost
+vxor 'BestCost, 'BestCost, topbit
+vand 'flag, 'flag, 0x1 // only interested in lowest bit
+vmovw.12 'lastX'lastY, 0 // need this to set up next stage reference data
+vjp!flag .EndofSecondStage // omit rest as all partial sums are already greater
+
+~vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*21 + 16]
+~vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*21 ]
+~vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.32 PartRes, cur0, temp0
+vsadbaw.32 PartRes, cur1, temp1
+vsadbaw.32 PartRes, cur2, temp2
+vsadbaw.32 PartRes, cur3, temp3
+vsadbw.8 PartRes, cur2, temp0
+vsadbaw.8 PartRes, cur3, temp1
+vmr2w temp0, ref4, ref0
+vmr2w temp1, ref5, ref1
+vmr2w temp2, ref6, ref2
+vmr2w temp3, ref7, ref3
+vsadbw.64 PartRes, cur0, temp0
+vsadbaw.64 PartRes, cur1, temp1
+vsadbaw.64 PartRes, cur2, temp2
+vsadbaw.64 PartRes, cur3, temp3
+vmr3w temp0, ref4, ref0
+vmr3w temp1, ref5, ref1
+vmr3w temp2, ref6, ref2
+vmr3w temp3, ref7, ref3
+vsadbw.128 PartRes, cur0, temp0
+vsadbaw.128 PartRes, cur1, temp1
+vsadbaw.128 PartRes, cur2, temp2
+vsadbaw.128 PartRes, cur3, temp3
+
+
+vjl                 VSTACK, .endofIter
+~vsadbw.16 PartRes, cur2, temp0
+~vsadbaw.16 PartRes, cur3, temp1
+~vaddw.248 result, result, PartRes // not first 3
+
+label EndofSecondStage
+
+end //*** of second integer step
+
+begin //*** of repositioning of reference data
+// need to move reference data
+// this depends on the lastX and lastY values
+p16 offset
+p16 NewPtr, counter
+vec16 ref0, ref1
+vec16 ref2, ref3
+regmap
+
+// start at (2+lastY)*ME_REFERENCE_ARRAY_STRIDE + SDM_ME_REFERENCE_ARRAY
+#ifdef MPEG4BUILD
+vim   offset, lastY, 4      // 0, 4 or 8
+vmovw 'counter, 10-1                        // we only require 16 + 2+ 2 rows of ref
+vmulw 'offset, 'offset, ME_REFERENCE_ARRAY_STRIDE/2
+#else
+vim   offset, lastY, 8      // 0, 8 or 16
+vmovw 'counter, 10-1                        // we only require 16 + 2+ 2 rows of ref
+vmulw 'offset, 'offset, ME_REFERENCE_ARRAY_STRIDE/4
+#endif //MPEG4BUILD
+
+
+vjp!lastX              .ShiftZero2           // last horizontal winner was 0
+~vmovw 'NewPtr, SDM_ME_REFERENCE_ARRAY - 2*ME_REFERENCE_ARRAY_STRIDE       // dest ptr
+~vim   RefPtr, offset, SDM_ME_REFERENCE_ARRAY // source ptr
+#ifdef MPEG4BUILD
+~vim     offset, lastX, -4
+#else
+~vim     offset, lastX, -8
+#endif
+
+vjp!offset            .ShiftRight2          // last horizontal winner was +2
+~vnop
+~vnop
+~vnop
+
+
+label ShiftLeft2
+// best x direction was +2
+// this means that we only need to shift the rows really
+vld128  ref0, [RefPtr,  0]
+vld128  ref1, [RefPtr, 16]
+vim NewPtr, NewPtr, ME_REFERENCE_ARRAY_STRIDE*2
+vld128  ref2, [RefPtr, 32] 
+vld128  ref3, [RefPtr, 48]
+vst128  ref0, [NewPtr,  0]
+vst128  ref1, [NewPtr, 16]
+vjd.counter     counter, .ShiftLeft2
+~vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+~vst128  ref2, [NewPtr, 32]
+~vst128  ref3, [NewPtr, 48]
+
+
+vjp                 .EndShift2
+~vnop
+~vnop
+~vnop
+
+
+begin // 1
+vec16 ref1_shift, ref3_shift
+
+label ShiftRight2                            // last horizontal winner was -2
+// we need to shift along by 4 pels
+vld128  ref0, [RefPtr,  0]
+vld128  ref1, [RefPtr, 16]
+vld128  ref2, [RefPtr, 32]
+vld128  ref3, [RefPtr, 48] 
+// increment the pointers
+vim NewPtr, NewPtr, ME_REFERENCE_ARRAY_STRIDE*2
+
+vsr8   ref1_shift, ref1, 4                        // shift by 4 pixels
+vmr2w  ref0, ref1,ref0                      // shift by 4 pixels
+vsr8   ref3_shift, ref3, 4                        // shift by 4 pixels
+vmr2w  ref2, ref3,ref2                      // shift by 4 pixels
+vst128  ref1_shift, [NewPtr, 16]
+vst128  ref0, [NewPtr,0] 
+vjd.counter     counter, .ShiftRight2
+~vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+~vst128  ref3_shift, [NewPtr, 48]
+~vst128  ref2, [NewPtr,32]                    // store
+
+vjp                 .EndShift2
+~vnop
+~vnop
+~vnop
+
+end // 1
+
+
+begin // 1
+vec16 ref1_shift, ref3_shift
+
+label    ShiftZero2
+// zero pos horizontally - need to shift right by 2 pels
+vld128  ref0, [RefPtr,  0]
+vld128  ref1, [RefPtr, 16]
+vld128  ref2, [RefPtr, 32] 
+vld128  ref3, [RefPtr, 48]
+vim NewPtr, NewPtr, ME_REFERENCE_ARRAY_STRIDE*2
+
+vsr8   ref1_shift, ref1, 2            // shift by 2 pixels
+vmr1w  ref0, ref1,ref0          // shift by 2 pixels
+vsr8   ref3_shift, ref3, 2            // shift by 2 pixels
+vmr1w  ref2, ref3,ref2          // shift by 2 pixels
+vst128  ref1_shift, [NewPtr, 16]
+vst128  ref0, [NewPtr, 0]
+vjd.counter     counter, .ShiftZero2
+~vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+~vst128  ref3_shift, [NewPtr, 48]
+~vst128  ref2, [NewPtr, 32]
+
+end // 1
+
+
+
+
+
+
+label EndShift2
+end //***  of repositioning of reference data
+// change RefPtr to point to start of best +/- offset in Ref array
+
+begin //*** of third integer step 
+// now do the final +/- 1 integer step
+vec16 ref0, ref4
+vec16 ref1, ref5
+vec16 ref2, ref6
+vec16 ref3, ref7
+vec16 temp0, temp1, temp2, temp3
+vec16 PartRes
+p16 flag
+vec16 topbit
+regmap
+//vmovw 'StepMult, 4 // steps of 1 pels in 1/4 pel units
+vasrw 'StepMult, 'StepMult, 1
+vjl     VSTACK, .initRDvals
+~vld128 cur0, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*0]
+~vld128 cur1, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*1]
+~vld128 cur2, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*2]
+
+vmovw 'RefPtr,   SDM_ME_REFERENCE_ARRAY
+
+// accumulate sad for (1, -1) first 4 rows
+// accumulate sad for (0, -1) first 4 rows
+// accumulate sad for (-1, -1) first 4 rows
+
+vld128 cur3, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*3]
+
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*1 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*1 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*2 + 16]
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*2 ]
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*3 + 16]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*3 ]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*4 + 16]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*4 ]
+
+vmrb temp0, ref4, ref0 // shift by 1
+vmrb temp1, ref5, ref1
+vmrb temp2, ref6, ref2
+vmrb temp3, ref7, ref3
+vsadbw.1   PartRes, cur0, temp0
+vsadbaw.1   PartRes, cur1, temp1
+vsadbaw.1   PartRes, cur2, temp2
+vsadbaw.1   PartRes, cur3, temp3
+vsadbw.8   PartRes, cur0, temp1
+vsadbaw.8   PartRes, cur1, temp2
+vsadbaw.8   PartRes, cur2, temp3
+vsadbw.32  PartRes, cur0, temp2
+vsadbaw.32  PartRes, cur1, temp3
+vmr1w temp0, ref4, ref0// shift by 2
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.2   PartRes, cur0, temp0
+vsadbaw.2   PartRes, cur1, temp1
+vsadbaw.2   PartRes, cur2, temp2
+vsadbaw.2   PartRes, cur3, temp3
+vsadbw.64  PartRes, cur0, temp2
+vsadbaw.64  PartRes, cur1, temp3
+
+vsr8 ref4, ref4, 2  // shift ref4 by 2 
+vsr8 ref5, ref5, 2  // shift ref5 by 2
+vsr8 ref6, ref6, 2  // shift ref6 by 2
+vsr8 ref7, ref7, 2  // shift ref7 by 2
+vmrb temp0, ref4, temp0 // shift by an extra 1 - i.e 3 in all
+vmrb temp1, ref5, temp1 // shift by an extra 1
+vmrb temp2, ref6, temp2 // shift by an extra 1
+vmrb temp3, ref7, temp3 // shift by an extra 1
+
+vsadbw.4   PartRes, cur0, temp0
+vsadbaw.4   PartRes, cur1, temp1
+vsadbaw.4   PartRes, cur2, temp2
+vsadbaw.4   PartRes, cur3, temp3
+vsadbw.16  PartRes, cur0, temp1
+vsadbaw.16  PartRes, cur1, temp2
+vsadbaw.16  PartRes, cur2, temp3
+vsadbw.128 PartRes, cur0, temp2
+vsadbaw.128 PartRes, cur1, temp3
+
+
+// accumulate sad for (1, -1) first 4 rows
+// accumulate sad for (0, -1) first 4 rows
+// accumulate sad for (-1, -1) first 4 rows
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*5 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*5 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*6 + 16]
+
+vaddw result, result, PartRes
+
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*6 ]
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*7 + 16]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*7 ]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*8 + 16]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*8 ]
+
+vmrb temp0, ref4, ref0
+vmrb temp1, ref5, ref1
+vmrb temp2, ref6, ref2
+vmrb temp3, ref7, ref3
+
+vsadbw.1  PartRes, cur4, temp0
+vsadbaw.1  PartRes, cur5, temp1
+vsadbaw.1  PartRes, cur6, temp2
+vsadbaw.1  PartRes, cur7, temp3
+vsadbw.8  PartRes, cur3, temp0
+vsadbaw.8  PartRes, cur4, temp1
+vsadbaw.8  PartRes, cur5, temp2
+vsadbaw.8  PartRes, cur6, temp3
+vsadbw.32 PartRes, cur2, temp0
+vsadbaw.32 PartRes, cur3, temp1
+vsadbaw.32 PartRes, cur4, temp2
+vsadbaw.32 PartRes, cur5, temp3
+
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.2  PartRes, cur4, temp0
+vsadbaw.2  PartRes, cur5, temp1
+vsadbaw.2  PartRes, cur6, temp2
+vsadbaw.2  PartRes, cur7, temp3
+vsadbw.64 PartRes, cur2, temp0
+vsadbaw.64 PartRes, cur3, temp1
+vsadbaw.64 PartRes, cur4, temp2
+vsadbaw.64 PartRes, cur5, temp3
+
+vsr8 ref4, ref4, 2  // shift ref4 by 2
+vsr8 ref5, ref5, 2  // shift ref5 by 2
+vsr8 ref6, ref6, 2  // shift ref6 by 2
+vsr8 ref7, ref7, 2  // shift ref7 by 2
+vmrb temp0, ref4, temp0 // shift by an extra 1
+vmrb temp1, ref5, temp1 // shift by an extra 1
+vmrb temp2, ref6, temp2 // shift by an extra 1
+vmrb temp3, ref7, temp3 // shift by an extra 1
+vsadbw.4   PartRes, cur4, temp0
+vsadbaw.4   PartRes, cur5, temp1
+vsadbaw.4   PartRes, cur6, temp2
+vsadbaw.4   PartRes, cur7, temp3
+vsadbw.16  PartRes, cur3, temp0
+vsadbaw.16  PartRes, cur4, temp1
+vsadbaw.16  PartRes, cur5, temp2
+vsadbaw.16  PartRes, cur6, temp3
+vsadbw.128 PartRes, cur2, temp0 
+vsadbaw.128 PartRes, cur3, temp1 
+vsadbaw.128 PartRes, cur4, temp2 
+vsadbaw.128 PartRes, cur5, temp3  
+
+
+// accumulate sad for (1, -1) first 4 rows
+// accumulate sad for (0, -1) first 4 rows
+// accumulate sad for (-1, -1) first 4 rows
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*9 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*9 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*10 + 16]
+
+vaddw result, result, PartRes
+
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*10 ]
+vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*11 + 16]
+vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*11 ]
+vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*12 + 16]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*12 ]
+
+vmrb temp0, ref4, ref0
+vmrb temp1, ref5, ref1
+vmrb temp2, ref6, ref2
+vmrb temp3, ref7, ref3
+vsadbw.1   PartRes, cur8, temp0
+vsadbaw.1   PartRes, cur9, temp1
+vsadbaw.1   PartRes, cur10, temp2
+vsadbaw.1   PartRes, cur11, temp3
+vsadbw.8   PartRes, cur7, temp0
+vsadbaw.8   PartRes, cur8, temp1
+vsadbaw.8   PartRes, cur9, temp2
+vsadbaw.8   PartRes, cur10, temp3
+vsadbw.32  PartRes, cur6, temp0
+vsadbaw.32  PartRes, cur7, temp1
+vsadbaw.32  PartRes, cur8, temp2
+vsadbaw.32  PartRes, cur9, temp3
+
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.2   PartRes, cur8, temp0
+vsadbaw.2   PartRes, cur9, temp1
+vsadbaw.2   PartRes, cur10, temp2
+vsadbaw.2   PartRes, cur11, temp3
+
+vsadbw.64  PartRes, cur6, temp0
+vsadbaw.64  PartRes, cur7, temp1
+vsadbaw.64  PartRes, cur8, temp2
+vsadbaw.64  PartRes, cur9, temp3
+
+
+vsr8 ref4, ref4, 2  // shift ref4 by 2
+vsr8 ref5, ref5, 2  // shift ref5 by 2
+vsr8 ref6, ref6, 2  // shift ref6 by 2
+vsr8 ref7, ref7, 2  // shift ref7 by 2
+vmrb temp0, ref4, temp0 // shift by an extra 1
+vmrb temp1, ref5, temp1 // shift by an extra 1
+vmrb temp2, ref6, temp2 // shift by an extra 1
+vmrb temp3, ref7, temp3 // shift by an extra 1
+vsadbw.4   PartRes, cur8, temp0
+vsadbaw.4   PartRes, cur9, temp1
+vsadbaw.4   PartRes, cur10, temp2
+vsadbaw.4   PartRes, cur11, temp3
+vsadbw.16  PartRes, cur7, temp0
+vsadbaw.16  PartRes, cur8, temp1
+vsadbaw.16  PartRes, cur9, temp2
+vsadbaw.16  PartRes, cur10, temp3
+vsadbw.128 PartRes, cur6, temp0 
+vsadbaw.128 PartRes, cur7, temp1
+vsadbaw.128 PartRes, cur8, temp2 
+vsadbaw.128 PartRes, cur9, temp3   
+ 
+
+// accumulate sad for (1, -1) first 4 rows
+// accumulate sad for (0, -1) first 4 rows
+// accumulate sad for (-1, -1) first 4 rows
+
+vld128 cur0, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*12]
+vld128 cur1, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*13]
+vld128 cur2, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*14]
+
+vaddw result, result, PartRes
+vmovw topbit, 0x8000
+vxor temp0, result, topbit
+vld128 cur3, [CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y + PCB_CURRENT_STRIDE*15]
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*13 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*13 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*14 + 16]
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*14 ]
+
+//check here if all partial results are already greater than current origin
+
+
+
+vxminw.255 temp0, temp0, PatternMatch
+vxor 'BestCost, 'BestCost, topbit
+vltw.1 flag, temp0, 'BestCost
+vxor 'BestCost, 'BestCost, topbit
+vand 'flag, 'flag, 0x1 // only interested in lowest bit
+vmovw.12 'lastX'lastY, 0 // need this to set up next stage reference data
+vjp!flag .EndofThirdStage // omit rest as all partial sums are already greater
+
+
+~vld128 ref6, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*15 + 16]
+~vld128 ref2, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*15 ]
+~vld128 ref7, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*16 + 16]
+vld128 ref3, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*16 ]
+
+vmrb temp0, ref4, ref0
+vmrb temp1, ref5, ref1
+vmrb temp2, ref6, ref2
+vmrb temp3, ref7, ref3
+vsadbw.1   PartRes, cur0, temp0
+vsadbaw.1   PartRes, cur1, temp1
+vsadbaw.1   PartRes, cur2, temp2
+vsadbaw.1   PartRes, cur3, temp3
+vsadbw.8   PartRes, cur11, temp0
+vsadbaw.8   PartRes, cur0, temp1
+vsadbaw.8   PartRes, cur1, temp2
+vsadbaw.8   PartRes, cur2, temp3
+vsadbw.32  PartRes, cur10, temp0
+vsadbaw.32  PartRes, cur11, temp1
+vsadbaw.32  PartRes, cur0, temp2
+vsadbaw.32  PartRes, cur1, temp3
+
+vmr1w temp0, ref4, ref0
+vmr1w temp1, ref5, ref1
+vmr1w temp2, ref6, ref2
+vmr1w temp3, ref7, ref3
+vsadbw.2    PartRes, cur0, temp0
+vsadbaw.2   PartRes, cur1, temp1
+vsadbaw.2   PartRes, cur2, temp2
+vsadbaw.2   PartRes, cur3, temp3
+vsadbw.64   PartRes, cur10, temp0
+vsadbaw.64  PartRes, cur11, temp1
+vsadbaw.64  PartRes, cur0, temp2
+vsadbaw.64  PartRes, cur1, temp3
+vsr8 ref4,  ref4, 2  // shift ref4 by 2
+vsr8 ref5,  ref5, 2  // shift ref5 by 2
+vsr8 ref6,  ref6, 2  // shift ref6 by 2
+vsr8 ref7,  ref7, 2  // shift ref7 by 2
+vmrb temp0, ref4, temp0 // shift by an extra 1
+vmrb temp1, ref5, temp1 // shift by an extra 1
+vmrb temp2, ref6, temp2 // shift by an extra 1
+vmrb temp3, ref7, temp3 // shift by an extra 1
+vsadbw.4    PartRes, cur0, temp0
+vsadbaw.4   PartRes, cur1, temp1
+vsadbaw.4   PartRes, cur2, temp2
+vsadbaw.4   PartRes, cur3, temp3
+vsadbw.16   PartRes, cur11, temp0
+vsadbaw.16  PartRes, cur0, temp1
+vsadbaw.16  PartRes, cur1, temp2
+vsadbaw.16  PartRes, cur2, temp3
+vsadbw.128  PartRes, cur10, temp0 
+vsadbaw.128 PartRes, cur11, temp1 
+vsadbaw.128 PartRes, cur0, temp2 
+vsadbaw.128 PartRes, cur1, temp3 
+
+
+vld128 ref4, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*17 + 16]
+vld128 ref0, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*17 ]
+vld128 ref5, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*18 + 16]
+vld128 ref1, [RefPtr,  ME_REFERENCE_ARRAY_STRIDE*18 ]  
+   
+vaddw result, result, PartRes
+
+vmrb temp0, ref4, ref0
+vmrb temp1, ref5, ref1
+vsadbw.8 PartRes, cur3, temp0   
+vsadbw.32 PartRes, cur2, temp0
+vsadbaw.32 PartRes, cur3, temp1 
+vmr1w temp2, ref4, ref0
+vmr1w temp3, ref5, ref1
+
+vsr8 ref4, ref4, 2  // shift ref4 by 2
+vsr8 ref5, ref5, 2  // shift ref5 by 2
+vsadbw.64 PartRes, cur2, temp2
+vsadbaw.64 PartRes, cur3, temp3  
+vmrb temp0, ref4, temp2 // shift by an extra 1
+vmrb temp1, ref5, temp3 // shift by an extra 1
+vsadbw.16 PartRes, cur3, temp0
+
+
+vjl                 VSTACK, .endofIter
+~vsadbw.128 PartRes, cur2, temp0
+~vsadbaw.128 PartRes, cur3, temp1  
+~vaddw.248 result, result, PartRes
+
+label EndofThirdStage
+end //*** of third integer step
+
+
+
+
+end //*** of function
+
+    
+endfunc
+    
+func.f SaveVectors
+
+begin
+// save motion vectors to circular buffer
+    vec16 bestvec 
+    s16 vecXshift:  VecX
+    s16 tempX: VecX
+    s16 vecYshift:  VecY
+    p16 flag
+    vec16 A<codingtype> = vr29
+    vec16 skip<cost:BestCost, vecx:VecX, vecy:VecY> = vr30
+    vec16 topbit
+    vec16 skipsign
+    vec16 Bestsign
+    
+    vmovw topbit, 0x8000
+
+    vxminw.255  Bestsign, 'BestCost, 1
+    vxminw.255  skipsign, 'skip_cost, 1
+    vxor   skipsign, skipsign, topbit
+    vxor   Bestsign, Bestsign, topbit
+        
+    vlew flag, skipsign, Bestsign // set flag if skip is better than best
+
+    vjp!flag  .CarryOn  // normal vec is best
+     ~vnop
+    ~vnop
+    ~vnop
+    vmvw vr00, skip, 12 // move the vecx and vecy 
+    // need to get skip vectors from parking place
+  //  ~vmovw 'RefPtr, SDMOF_IntraPredictionResidsLuma
+  //  ~vld16 'vecXshift,    [RefPtr,2]
+  //  ~vnop
+    move16 'BestCost, 'skip_cost
+  //  vjp .End
+  //  ~vnop
+  //  ~vnop
+  //  ~vnop
+ label CarryOn
+    
+    vmulw 'vecYshift, 'VecY, 256
+
+    move16 vecXshift, vecYshift
+    vand  'tempX, 'VecX, 0xFF
+    vaddw 'vecXshift, 'vecXshift, 'tempX
+    
+ label End   
+ #ifdef MPEG4BUILD   
+    vmovw 'A_codingtype, MBCT_MPEG4_INTER16X16
+ #else // MPEG4BUILD
+    vmovw 'A_codingtype, MBCT_H264_INTER16X16
+ #endif // MPEG4BUILD
+    
+   // vjp             .Generate_Soft_ME_Response
+
+    vst8   A_codingtype, [CirBuf, MPO_MBCodingType] // set coding type
+    vxminw.15 bestvec, 'vecXshift, 4 // only lane 2
+    vst64 bestvec, [CirBuf  ,0x10] // save 4 copies for each 8x8 block
+    
+end
+   
+endfunc
+
+// function to perform limited step one functionality
+// initially to look at (-8,0) (0,0) and (8,0)
+func.f ZeroDisplacement
+
+begin
+
+vmovw  'VecX'VecY, 0  // set vecs to zero
+vec16  savevals1<point:i1,posX:i6, posY:i7>=vr29
+p16 res4= i13// only needed in first step
+// initialise the 9 sums to the rate distortion approximation function
+// set each lane equal to this value
+// this sets the vectors res0 to res8 with the RD cost for each one's MV
+vec16 temp=vr20 // to make sure it doesn't conflict with anything in initRDvals
+vec16 tempres <Ptrx : PredX, Ptry : PredY>
+
+vec16   ref0, ref1, ref2, ref3, ref4, ref5
+vec16 PartRes, bestvec
+s16   Partres4:res4 // this will hold the (0,0) displacement SAD cost
+
+p16 counter
+p16 CurPtr
+regmap
+// read quantiser
+
+
+vdmawait 0x0, 0x7f // make sure DMA of ref has completed
+~vabsw 'tempres_Ptrx'tempres_Ptry, 'PredX'PredY
+
+vnormw 'tempres_Ptrx'tempres_Ptry,'tempres_Ptrx'tempres_Ptry
+vxsumw.255 temp, 'tempres_Ptrx'tempres_Ptry, 3  // add the two and put in all lanesv
+
+//vmovw result, 0xFFFF // initialise all to very high
+
+vmovw 'counter, 8-1 // 8 pairs of rows
+
+vmulw  temp, temp, 2
+
+vmovw 'RefPtr,   SDM_ME_REFERENCE_ARRAY
+vrsubw temp, temp, 62
+
+vmulw temp, temp, lambda
+
+
+vim RefPtr, RefPtr, 8*ME_REFERENCE_ARRAY_STRIDE
+vim    CurPtr, CirBuf,MPO_PixelCoeffBuffer + PCB_CURRENT_Y 
+vmvw.32 'res4, temp
+
+// this loop is the first set of 8 rows needed for the three
+// zero vertical displacement SADs.  It is also the second set of 
+// 8 rows needed for the -8 vertical displacement SADs
+label OnlyLoop
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+vld128 cur0,[CurPtr,0]
+vld128 cur1,[CurPtr,PCB_CURRENT_STRIDE]
+
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+vsadbw  'Partres4, cur0, ref2 
+vsadbaw 'Partres4, cur1, ref5 
+
+
+vjd.counter     counter, .OnlyLoop
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw 'res4, 'res4, 'Partres4
+~vnop
+
+move16 BestCost, res4
+
+vmovw  'lastX'lastY, 0  // set vecs to zero
+
+end
+
+endfunc
+
+
+
+// function to perform limited step one functionality
+// initially to look at (-8,0) (0,0) and (8,0)
+func.f StepOne
+
+begin
+
+//vmovw  'VecX'VecY, 0  // set vecs to zero
+vec16  savevals1<point:i1,posX:i6, posY:i7>=vr29
+p16 res4= i13// only needed in first step
+// initialise the 9 sums to the rate distortion approximation function
+// set each lane equal to this value
+// this sets the vectors res0 to res8 with the RD cost for each one's MV
+vec16 temp=vr20 // to make sure it doesn't conflict with anything in initRDvals
+vec16 tempres <Ptrx : PredX, Ptry : PredY>
+
+vec16   ref0, ref1, ref2, ref3, ref4, ref5
+vec16 PartRes, bestvec
+s16   Partres4:res4 // this will hold the (0,0) displacement SAD cost
+
+p16 counter
+p16 CurPtr
+regmap
+// read quantiser
+vmvw cur11, vr00
+vmvw savevals1, vr01
+
+vjl     VSTACK, .initRDvals
+// now do res4 which couldn't fit in the vector
+// it is (0,0)
+vnop
+vnop
+vnop
+vdmawait 0x0, 0x7f // make sure DMA of ref has completed
+~vabsw 'tempres_Ptrx'tempres_Ptry, 'PredX'PredY
+
+vnormw 'tempres_Ptrx'tempres_Ptry,'tempres_Ptrx'tempres_Ptry
+vxsumw.255 temp, 'tempres_Ptrx'tempres_Ptry, 3  // add the two and put in all lanesv
+
+//vmovw result, 0xFFFF // initialise all to very high
+
+vmovw 'counter, 4-1 // 4 pairs of rows
+
+vmulw  temp, temp, 2
+
+vmovw 'RefPtr,   SDM_ME_REFERENCE_ARRAY
+vrsubw temp, temp, 62
+
+vmulw temp, temp, lambda
+
+
+vim RefPtr, RefPtr, 8*ME_REFERENCE_ARRAY_STRIDE
+vim    CurPtr, CirBuf,MPO_PixelCoeffBuffer + PCB_CURRENT_Y 
+vmvw.32 'res4, temp
+
+// this loop is the first set of 8 rows needed for the three
+// zero vertical displacement SADs.  It is also the second set of 
+// 8 rows needed for the -8 vertical displacement SADs
+label FirstLoop
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+vld128 cur0,[CurPtr,0]
+vld128 cur1,[CurPtr,PCB_CURRENT_STRIDE]
+//vld128 cur2,[CurPtr,PCB_CURRENT_STRIDE*8]
+//vld128 cur3,[CurPtr,PCB_CURRENT_STRIDE*9]
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+
+vsadbw.8  PartRes, cur0, ref0 
+vsadbaw.8 PartRes, cur1, ref3 
+
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+
+vsadbw.16 PartRes, cur0, ref1 
+vsadbaw.16 PartRes, cur1, ref4 
+
+vsadbw  'Partres4, cur0, ref2 
+vsadbaw 'Partres4, cur1, ref5 
+
+//vsadbw.2  PartRes, cur2, ref2
+//vsadbaw.2 PartRes, cur3, ref5
+
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+
+
+vjd.counter     counter, .FirstLoop
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw 'res4, 'res4, 'Partres4
+~vaddw.255 result, result, PartRes
+
+vmovw 'counter, 4-1 // 4 pairs of rows
+// this loop is the second set of 8 rows needed for the three
+// zero vertical displacement SADs. It is also the first set of 
+// 8 rows needed for the +8 vertical displacement SADs
+label SecondLoop
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+
+vld128 cur0,[CurPtr,0]
+vld128 cur1,[CurPtr,PCB_CURRENT_STRIDE]
+
+//vld128 cur2,[CurPtr,-PCB_CURRENT_STRIDE*8]
+//vld128 cur3,[CurPtr,-PCB_CURRENT_STRIDE*9]
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+
+vsadbw.8 PartRes, cur0, ref0 
+vsadbaw.8 PartRes, cur1, ref3 
+
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+
+vsadbw.16 PartRes, cur0, ref1 
+vsadbaw.16 PartRes, cur1, ref4 
+//vsadbw.64  PartRes, cur2, ref2
+//vsadbaw.64 PartRes, cur3, ref5
+vsadbw 'Partres4, cur0, ref2 
+vsadbaw 'Partres4, cur1, ref5 
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+
+
+
+vjd.counter     counter, .SecondLoop
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw 'res4, 'res4, 'Partres4
+~vaddw.255 result, result, PartRes
+
+
+move16 BestCost, res4
+
+//vaddw.224 result, result, PartRes
+
+vjl                 VSTACK, .endofIter
+
+~vnop
+~vnop
+~vnop
+
+vjp!VecX       .EndFunc  // continue as per usual
+vnop
+vnop
+vnop
+// need to DMA in different reference data
+begin
+vec16 temp0, temp1
+regmap
+vmvw   temp0, vr00 // save current state
+vmvw   temp1, vr01 // save current state
+
+move16  RefPtr, savevals1_point
+move16  PredX, savevals1_posX
+move16  PredY, savevals1_posY
+ // add offset to PredX VecX/4
+move16 BestCost, VecX
+#ifdef MPEG4BUILD
+vasrw 'BestCost'RefPtr, 'BestCost'RefPtr, 1
+#else // MPEG4BUILD
+vasrw 'BestCost'RefPtr, 'BestCost'RefPtr, 2
+#endif // MPEG4BUILD
+vaddw 'PredX, 'PredX, 'BestCost
+ 
+vmovw 'lambda, 0 //_vr00 = _vmovw(0, 0x80); // clear the top 16 bits of the SDM address
+vmovw 'BestCost, 0x2020//    _vr01 = _vmovw(0x2020, 0x01); // block size 32x32
+vmovw 'CirLeft,  SDM_ME_REFERENCE_ARRAY//   _vr00 = _vmovw(SDM_ME_REFERENCE_ARRAY, 0x40); // SDM address where to store Y ref dat
+
+
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, ME_REFERENCE_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            PredX, PredY
+    
+    
+end
+
+
+vmvw vr00, temp0 // restore current state
+vmvw vr01, temp1 // restore current state
+
+end
+label EndFunc
+end
+endfunc
+// function to perform full step one functionality
+//                      (-8,-8) (0,-8)  (8,-8)
+// initially to look at (-8, 0) (0, 0)  (8, 0)
+//                      (-8, 8) (0, 8)  (8, 8)
+func.f FullStepOne
+
+begin
+
+//vmovw  'VecX'VecY, 0  // set vecs to zero
+vec16  savevals1<point:i1,posX:i6, posY:i7>=vr29
+p16 res4= i13// only needed in first step
+// initialise the 9 sums to the rate distortion approximation function
+// set each lane equal to this value
+// this sets the vectors res0 to res8 with the RD cost for each one's MV
+vec16 temp=vr20 // to make sure it doesn't conflict with anything in initRDvals
+vec16 tempres <Ptrx : PredX, Ptry : PredY>
+
+vec16   ref0, ref1, ref2, ref3, ref4, ref5
+vec16 PartRes, bestvec
+s16   Partres4:res4 // this will hold the (0,0) displacement SAD cost
+
+p16 counter
+p16 CurPtr
+regmap
+// read quantiser
+vmvw cur11, vr00
+vmvw savevals1, vr01
+
+vjl     VSTACK, .initRDvals
+// now do res4 which couldn't fit in the vector
+// it is (0,0)
+vnop
+vnop
+vnop
+vdmawait 0x0, 0x7f // make sure DMA of ref has completed
+~vabsw 'tempres_Ptrx'tempres_Ptry, 'PredX'PredY
+
+vnormw 'tempres_Ptrx'tempres_Ptry,'tempres_Ptrx'tempres_Ptry
+vxsumw.255 temp, 'tempres_Ptrx'tempres_Ptry, 3  // add the two and put in all lanesv
+
+//vmovw result, 0xFFFF // initialise all to very high
+
+vmovw 'counter, 4-1 // 4 pairs of rows
+
+vmulw  temp, temp, 2
+
+vmovw 'RefPtr,   SDM_ME_REFERENCE_ARRAY
+vrsubw temp, temp, 62
+
+vmulw temp, temp, lambda
+
+
+//vim RefPtr, RefPtr, 8*ME_REFERENCE_ARRAY_STRIDE
+vim    CurPtr, CirBuf,MPO_PixelCoeffBuffer + PCB_CURRENT_Y 
+vmvw.32 'res4, temp
+
+label LoopZero
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+vld128 cur0,[CurPtr,0]
+vld128 cur1,[CurPtr,PCB_CURRENT_STRIDE]
+
+
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+
+vsadbw.1  PartRes, cur0, ref0 
+vsadbw.4  PartRes, cur0, ref1
+
+vsadbaw.1 PartRes, cur1, ref3 
+vsadbaw.4 PartRes, cur1, ref4
+
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+vsadbw.2  PartRes, cur0, ref2
+vsadbaw.2 PartRes, cur1, ref5 
+
+
+vjd.counter     counter, .LoopZero
+~vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw.7 result, result, PartRes
+
+// this loop is the first set of 8 rows needed for the three
+// zero vertical displacement SADs.  It is also the second set of 
+// 8 rows needed for the -8 vertical displacement SADs
+
+vmovw 'counter, 4-1 // 4 pairs of rows
+label LoopOne
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+vld128 cur0,[CurPtr,-PCB_CURRENT_STRIDE*8]
+vld128 cur1,[CurPtr,-PCB_CURRENT_STRIDE*7]
+vld128 cur2,[CurPtr, PCB_CURRENT_STRIDE*0]
+vld128 cur3,[CurPtr, PCB_CURRENT_STRIDE*1]
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+
+vsadbw.8  PartRes, cur0, ref0 
+vsadbaw.8 PartRes, cur1, ref3 
+vsadbw.1  PartRes, cur2, ref0
+vsadbaw.1 PartRes, cur3, ref3
+
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+
+vsadbw.16 PartRes, cur0, ref1 
+vsadbaw.16 PartRes, cur1, ref4 
+vsadbw.4  PartRes, cur2, ref1
+vsadbaw.4 PartRes, cur3, ref4
+
+vsadbw  'Partres4, cur0, ref2 
+vsadbaw 'Partres4, cur1, ref5 
+
+vsadbw.2  PartRes, cur2, ref2
+vsadbaw.2 PartRes, cur3, ref5
+
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+
+
+vjd.counter     counter, .LoopOne
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw 'res4, 'res4, 'Partres4
+~vaddw.31 result, result, PartRes
+
+//reset current pointer
+vim    CurPtr, CirBuf,MPO_PixelCoeffBuffer + PCB_CURRENT_Y 
+
+vmovw 'counter, 4-1 // 4 pairs of rows
+// this loop is the second set of 8 rows needed for the three
+// zero vertical displacement SADs. It is also the first set of 
+// 8 rows needed for the +8 vertical displacement SADs
+label LoopTwo
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+
+vld128 cur2,[CurPtr, PCB_CURRENT_STRIDE*0]
+vld128 cur3,[CurPtr, PCB_CURRENT_STRIDE*1]
+vld128 cur0,[CurPtr, PCB_CURRENT_STRIDE*8]
+vld128 cur1,[CurPtr, PCB_CURRENT_STRIDE*9]
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+
+vsadbw.8  PartRes, cur0, ref0 
+vsadbaw.8 PartRes, cur1, ref3 
+vsadbw.32 PartRes, cur2, ref0
+vsadbaw.32 PartRes, cur3, ref3
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+
+vsadbw.16 PartRes, cur0, ref1 
+vsadbaw.16 PartRes, cur1, ref4 
+vsadbw.128 PartRes, cur2, ref1
+vsadbaw.128 PartRes, cur3, ref4
+
+vsadbw.64  PartRes, cur2, ref2
+vsadbaw.64 PartRes, cur3, ref5
+vsadbw  'Partres4, cur0, ref2 
+vsadbaw 'Partres4, cur1, ref5 
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+
+vjd.counter     counter, .LoopTwo
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw 'res4, 'res4, 'Partres4
+~vaddw.248 result, result, PartRes
+
+
+vmovw 'counter, 4-1 // 4 pairs of rows
+// current pointer is now at 8th row
+label LoopThree
+vld128 ref0,[RefPtr,0]
+vld128 ref1,[RefPtr,16]
+
+vld128 cur0,[CurPtr, PCB_CURRENT_STRIDE*0]
+vld128 cur1,[CurPtr, PCB_CURRENT_STRIDE*1]
+vld128 ref3,[RefPtr,ME_REFERENCE_ARRAY_STRIDE]
+vld128 ref4,[RefPtr,ME_REFERENCE_ARRAY_STRIDE+16]
+
+ 
+vsadbw.32 PartRes, cur0, ref0
+vsadbaw.32 PartRes, cur1, ref3
+vmr4w  ref2, ref1, ref0 // shift by 8 pels
+vmr4w  ref5, ref4, ref3 // shift by 8 pels
+
+vsadbw.128 PartRes, cur0, ref1
+vsadbaw.128 PartRes, cur1, ref4
+
+vsadbw.64  PartRes, cur0, ref2
+vsadbaw.64 PartRes, cur1, ref5
+
+vjd.counter     counter, .LoopThree
+~vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE*2
+~vim CurPtr, CurPtr, PCB_CURRENT_STRIDE*2
+~vaddw.224 result, result, PartRes
+
+
+move16 BestCost, res4
+
+//vaddw.224 result, result, PartRes
+
+vjl                 VSTACK, .endofIter
+
+~vnop
+~vnop
+~vnop
+move16 lastX, VecY
+vor   'lastX, 'lastX, 'VecX
+
+vjp!lastX       .EndFullFunc  // continue as per usual as zero was best anyway
+vnop
+vnop
+vnop
+// need to DMA in different reference data
+begin
+vec16 temp0, temp1
+regmap
+vmvw   temp0, vr00 // save current state
+vmvw   temp1, vr01 // save current state
+
+
+move16  PredX, savevals1_posX
+move16  PredY, savevals1_posY
+ // add offset to PredX VecX/4
+move16 BestCost, VecX
+move16 RefPtr, VecY
+#ifdef MPEG4BUILD
+vasrw 'BestCost'RefPtr, 'BestCost'RefPtr, 1
+#else // MPEG4BUILD
+vasrw 'BestCost'RefPtr, 'BestCost'RefPtr, 2
+#endif // MPEG4BUILD
+vaddw 'PredX'PredY, 'PredX'PredY, 'BestCost'RefPtr
+move16  RefPtr, savevals1_point
+vmovw 'lambda, 0 //_vr00 = _vmovw(0, 0x80); // clear the top 16 bits of the SDM address
+vmovw 'BestCost, 0x2020//    _vr01 = _vmovw(0x2020, 0x01); // block size 32x32
+vmovw 'CirLeft,  SDM_ME_REFERENCE_ARRAY//   _vr00 = _vmovw(SDM_ME_REFERENCE_ARRAY, 0x40); // SDM address where to store Y ref dat
+
+
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, ME_REFERENCE_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            PredX, PredY
+    
+    
+end
+
+vmvw 'lastX, 'VecX // restore lastX
+
+vmvw vr00, temp0 // restore current state
+vmvw vr01, temp1 // restore current state
+
+end
+label EndFullFunc
+
+end
+endfunc

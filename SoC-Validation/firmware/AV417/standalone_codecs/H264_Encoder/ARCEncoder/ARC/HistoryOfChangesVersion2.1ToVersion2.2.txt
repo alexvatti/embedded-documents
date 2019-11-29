@@ -1,0 +1,248 @@
+Updated by Mike Nilsson on 13 September 2005
+--------------------------------------------
+
+H264VLDHeaders.cpp - In VLDDecodeSliceHeader, changed:
+
+  if ((H264_CODED_SLICE_IDR == m_NALUnitType) && m_VLDSliceHeaderFirstSlice)
+
+to 
+
+  if (((H264_CODED_SLICE_IDR == m_NALUnitType) && m_VLDSliceHeaderFirstSlice) ||
+      (m_VLDSliceHeaderFirstSlice))
+
+to allow decoding to initialise when the first slice data is not IDR data.
+
+H264VLDSei.cpp - in the case for H264_VLD_SEI_BUFFERING_PERIOD_VCL_INITIAL_DELAY, "nal" parameter is set when it should be "vcl".
+
+H264VLDVui.cpp - in state H264_VLD_VUI_INIT_CPB_DELAY and the following three states, a five bit code should be read and not a single bit code as previously implemented.
+
+
+Updated by Mike Nilsson on 16 September 2005
+--------------------------------------------
+
+These changes mostly relate to the support of stored B frames and flexible groups of pictures.
+
+General Changes
+---------------
+Changed the name of m_BPictureRatio to m_MaxPicsStoredForLaterCoding.
+
+Changed "h264_b_picture_status_type m_BPictureStatus" to "h264_gop_encoding_state_type m_GopEncodingState"
+
+Removed the variable m_RemainingBumpingDelay, as the bumping process is now always invoked, rather than using a one in one out process with start up delay m_RemainingBumpingDelay.
+
+Changed "if (0 != m_NALReferenceIDC)" to "if (m_StoreForReference)" etc.
+
+H264EnumTypes.h
+---------------
+Changed name of h264_b_picture_status_type to h264_gop_encoding_state_type and changed the internal enum names.
+
+H264Encoder.h
+-------------
+Added #define H264_ENCODER_MAX_OUTPUT_PICTURES 16 to support the bumping process in the encoder.
+
+Added a type h264_picture_type_t so that the application can specify how a given frame is to be coded.
+
+Removed the set up parameter b_quantiser_differential.
+
+Added results parameter number_of_output_pictures and allowed an array of output frames.
+
+Declaration of f_h264_encoder_picture extended to include parameters for picture_type, gop_hierarchy_number, store_for_reference, and delta_qp.
+
+
+CH264Encoder.h
+--------------
+
+Declaration of EncodePicture extended to include parameters for picture_type, gop_hierarchy_number, store_for_reference, and delta_qp.
+
+Added variable m_InterFrameMVHorRefPoc[2] to stores the Picture Order Counts of the key frames referenced by m_InterFrameMVHor
+
+Added variables m_PictureType, m_GopHierarchyNumber, m_StoreForReference, m_DeltaQP to store the additional parameters passed into EncodePicture.
+
+The above two sets of variables are also added to source_picture_store_array_t.
+
+Added variable m_SourcePictureStoreCodingOrder.
+
+Added array_position parameter to the function declaration of InterFrameLineMotionEstimation.
+
+Added declaration for a new function SetStoredPictureCodingOrder.
+
+Removed variable m_BQuantiserDifferential.
+
+H264EncodedPictureBuffer.h
+--------------------------
+
+Added variable m_GopHierarchyNumber to store the hierarchy number of a stored frame. Added variable m_CurrentGopHierarchyNumber. Added variable m_ArrayPositionOfMostRecentKeyReferencePicture which indicates the most recent reference with GopHierarchyNumber == 0.
+
+Added declaration for the function RestrictReferencesByGopHierarchyNumber.
+
+Extended declaration for GetPictureForEncoding by addition of a parameter indicating gop_hierarchy_number.
+
+Added the function GetArrayPositionOfMostRecentKeyReferencePicture.
+
+Added declaration for the function OutputFrameBumping.
+
+Added the function IsStoredForReferenceByArrayPosition.
+
+H264Encoder.cpp
+----------------
+
+f_h264_encoder_picture : extended to include parameters for picture_type, gop_hierarchy_number, store_for_reference, and delta_qp.
+
+CH264Encoder.cpp
+----------------
+
+ChangeSettings : Changed direct mode (m_DirectSpatialMVPredFlag) to be Spatial direct rather than temporal direct as this was found to be generally better in flexible groups of pictures coding. The number_of_reference_pictures is now exactly as passed in the set up parameters, rather than being incremented by one when B pictures are coded (also in IDRChangeSettings(...)).
+
+SetUpSequenceParameterSet : Use Poc type 0 when pictures are coded out of order, because in this case the pattern of reference frames is not known and Poc type 1 can not in this case give an efficient compression of Poc. Continue to use Poc type 1 otherwise. With Poc type 0, set the number of bits used according to how many frames can be re-ordered. Set m_SequenceParameterSet->vui_parameters->num_reorder_frames to zero when there is no re-oredering and to max_dec_frame_buffering otherwise, as a precise value is diufficult to set correctly.
+
+EncodePicture : extended to include parameters for picture_type, gop_hierarchy_number, store_for_reference, and delta_qp.
+
+SetReturnParameters : allow for outputting multiple frames due to the bumping process.
+
+H264MotionEstimation.cpp
+------------------------
+
+InterFrameLineMotionEstimation : Changed to allow a reference picture array position to be passed in so that line motion estimation can be done on a specified picture rather than always being the most recent reference picture.
+
+FullSearch16X16MBSOADOnly : 
+DiamondSearch16X16MBSOADOnly :
+DiamondSearch8X8MB :
+FullSearchSubBlock :
+DiamondSearchSubBlock :
+Added code so that if m_InterFrameMVHor was not calculated relative to the current reference picture, it is scaled to an appropriate value.
+
+MotionEstimateCalculateSkippedCost : When m_MakeAndUseQuarterPelUpsampledPicture is false, detect the case of the skippedvector being zero and calculate the skipped cost directly without going through the MakeInterPrediction function: the end result is the same but it is quicker.
+
+SimpleQuarterPelRefinement : initialise best_quarter_pel_saxd and best_quarter_pel_bit_cost at the start of the function rather than in the loop. The calculation of top_row_of_reference and top_col_of_reference had the use of centre_int_x and centre_int_y swapped.
+
+H264EncoderMain.cpp
+-------------------
+
+EncoderMainFrameStart : Added support for flexible GOP coding.
+
+EncoderMainPictureStart : Added support for flexible GOP coding.
+
+EncodePictureMainPictureEnd : Added support for bumping output.
+
+H264EncodedPictureBuffer.cpp
+----------------------------
+
+ProcessMMCOReset : Reset m_ArrayPositionOfMostRecentKeyReferencePicture and m_GopHierarchyNumber.
+
+PrepareForStoringFrame : Call CreateMMCOCommandList etc. when using m_FlexibleGopCoding.
+
+Added a new function RestrictReferencesByGopHierarchyNumber. This ensures that the current picture does not use pictures with a larger gop hierarchy number as reference.
+
+CreateMMCOCommandList : Added support for flexible GOP coding. Frames are marked as unused for reference according to gop hierarchy number and whether they are in an earlier sub-gop (or sub-sub-gop etc).
+
+GetPictureForEncoding : Added parameter gop_hierarchy_number which indicates the gop hierarchy number for the current picture. This is used to ensure that a picture can only be encoded using references that have a lower than or equal gop_hierarchy_number.
+
+StorePicture : noew stores the gop_hierarchy_number and m_ArrayPositionOfMostRecentKeyReferencePicture.
+
+OutputFrame : now returns the array position of the output frame.
+
+Added new function OutputFrameBumping.
+
+H264EncoderModeDecisions.cpp
+----------------------------
+
+Added new function SetStoredPictureCodingOrder which sets the array m_SourcePictureStoreCodingOrder, which stores the coding order of pictures between key frames.
+
+H264RateControl.cpp
+-------------------
+
+RateControlQuantSelect : set new_quant relative to m_FixedQuantiserValue using m_DeltaQP rather than m_BQuantiserDifferential.
+
+BTH264EncoderApp.cpp
+--------------------
+
+Added the output bitstream name as a parameter.
+
+Added a function set_flexible_gop_coding_parameters to provide the parameters for coding hierarchical groups of pictures.
+
+Set additional parameters for f_h264_encoder_picture. set_flexible_gop_coding_parameters can be used to help with this.
+
+
+Updated by Mike Nilsson on 19 September 2005
+--------------------------------------------
+
+CH264Encoder.cpp: EncodePicture(...) : Only perform copy "m_PictureType = picture_type;" etc when storing pictures for later encoding or coding a key frame. When coding stored frames these values will be read back from the store together with the source picture. Copying here would not matter for one slice per picture as the retrieval is done later, but would be a problem with two or more slices as the retrieval is only done once per frame.
+
+Updated by Mike Nilsson on 21 September 2005
+--------------------------------------------
+Removed the member variable m_BQuantiserDifferential, as delta QP is passed with each source picture. But setup_parameters->b_quantiser_differential is still used, but only for setting the "K factor" in the rate control algorithm, for the case when rate control is used.
+
+Added member variable m_B_Pictures to store the set up parameter b_pictures, which indicates whether B pictures may be encoded.
+
+Changed variables with names like "b_picture_stored_for_later_encoding" to "source_picture_stored_for_later_encoding".
+
+H264Encoder.h
+-------------
+Added setup parameters:
+	bool b_pictures; // Whether B pictures may be encoded. Needed to set the profile correctly and whether motion vectors need to be stored for use with direct mode
+	int pic_order_cnt_type;	// Indicates the picture order count type to use:
+
+CH264Encoder.h
+--------------
+Added member variable "bool m_B_Pictures".
+
+Removed function declaration for SetSliceType().
+
+CH264EncodedPictureBuffer.h
+---------------------------
+Added member variable "bool m_ReferencesWithNonZeroGopHierarchyNumber", so that when flexible group of pictures encoding is used with hierarchical coding, suitable MMCO commands are encoded to ensure appropriate pictures are mainatined as reference pictures.
+
+CH264Encoder.cpp
+----------------
+ChangeSettings : when setting baseline_compatibility_flag, use setup_parameters->b_pictures rather than setup_parameters->max_pics_stored_for_later_coding.
+
+SetUpSequenceParameterSet : set the picture order count type according to the set up parameters. Change the line:
+m_SequenceParameterSet->vui_parameters->max_dec_frame_buffering = m_SequenceParameterSet->num_ref_frames + 1;
+to
+m_SequenceParameterSet->vui_parameters->max_dec_frame_buffering = m_SequenceParameterSet->num_ref_frames;
+(i.e. no plus 1).
+
+CH264EncodedPictureBuffer.cpp
+-----------------------------
+PrepareForStoringFrame : Added code to set m_ReferencesWithNonZeroGopHierarchyNumber, by counting how many of the reference pictures have hierarchy number greater than zero.
+
+H264EncoderModeDecisions.cpp
+----------------------------
+Removed definition of the function SetSliceType().
+
+BTH264EncoderApp.cpp
+--------------------
+Added the bbp_coding as a parameter, which indicates whether inflexible BBP-like coding is to be used, or whether flexible group of picture coding is to be used (not necessarily hierarchical coding).
+
+Set the parameters b_pictures and pic_order_cnt_type according to max_pics_stored_for_later_coding and bbp_coding.
+
+No longer increment the number of reference pictures when B pictures may be encoded: the number on the command line is now the number used.
+
+Updated by Mike Nilsson on 22 September 2005
+--------------------------------------------
+
+H264LoopFilter.h
+----------------
+LoopFilterMBAFFFrame : Added check "if (0 != strength[0])" to prevent run-time warning of accessing uninitialised memory. The resulting copied data is not used so this is not a real bug fix.
+
+H264EncoderMain.cpp
+-------------------
+
+EncoderMainPictureStart : Added check on whether m_SliceNumList0RefPictures is zero, and if so, to set equal to the number of available references. This can happen at the start when the pictures before the I frame only have a "list 1" reference and when field coding is used and this is the second field. The first field would have started off as a B field, but was changed to P due to references only in one list. For this second field, the slice type is still P, but references are all in list 1 by picture order count.
+
+H264MotionEstimation.cpp
+------------------------
+
+SceneChangeDetection : Consider both list 0 and list 1 SOADs when determining whether there is a scene change. It is possible that all references are in list 1, and considering only list 0 SOADs, which would have default large values, would incorreectly lead to the conclusion of a scene change.
+
+H264RateControl.cpp
+-------------------
+
+RateControlFrameStart : Set a limit on the target bits for a frame, equal to 8 times the average bits per frame. This is to avoid one frame, usually an I frame, having a very large target due to the complexity calculations, and taking most of the bits for a group of pictures. Content that caused a problem had a nearly still image followed by action, where during the still part, the Intra complexity became high relative to the P and B complexity, which caused too many bits to be used for intra during the following action.
+
+BTH264EncoderApp.cpp
+--------------------
+Ensure that setup_parameters.intra_picture_frequency is a multiple of (setup_parameters.max_pics_stored_for_later_coding + 1).
+
+Ensure that regular intra frames are coded when indicated in the set up parameters.
+

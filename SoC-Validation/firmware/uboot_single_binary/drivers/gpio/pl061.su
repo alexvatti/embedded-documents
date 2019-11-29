@@ -1,0 +1,15 @@
+pl061.c:23:25:pl061_gpio_get_bank	0	static
+pl061.c:29:5:pl061_gpio_get_pin	0	static
+pl061.c:36:5:pl061_gpio_direction_input	0	static
+pl061.c:52:5:pl061_gpio_direction_output	8	static
+pl061.c:74:6:pl061_gpio_get_value	0	static
+pl061.c:80:7:pl061_gpio_set_value	0	static
+pl061.c:88:7:pl061_irq_disable	0	static
+pl061.c:98:7:pl061_irq_enable	0	static
+pl061.c:109:6:pl061_irq_type	12	static
+pl061.c:152:5:gpio_request	0	static
+pl061.c:161:5:gpio_free	0	static
+pl061.c:167:5:gpio_direction_input	8	static
+pl061.c:177:5:gpio_direction_output	8	static
+pl061.c:185:5:gpio_get_value	0	static
+pl061.c:194:5:gpio_set_value	8	static

@@ -1,0 +1,9 @@
+
+arc_mpeg.o:	MPEGDecoderLib/arc_mpeg.c \
+	./MPEGDecoderLib/stdint.h \
+	MPEGDecoderLib/libarcavcodec/arc/aurora_asm.h \
+	MPEGDecoderLib/libarcavcodec/bswap.h \
+	MPEGDecoderLib/arc_codecs.h \
+	MPEGDecoderLib/libarcavcodec/avcodec.h \
+	MPEGDecoderLib/libarcavcodec/common.h \
+	MPEGDecoderLib/libarcavcodec/rational.h 

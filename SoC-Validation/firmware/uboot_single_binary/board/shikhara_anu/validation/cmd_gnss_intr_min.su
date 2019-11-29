@@ -1,0 +1,2 @@
+cmd_gnss_intr_min.c:7:6:temp_hndler	8	static
+cmd_gnss_intr_min.c:11:5:do_intr_gnss_test	8	static

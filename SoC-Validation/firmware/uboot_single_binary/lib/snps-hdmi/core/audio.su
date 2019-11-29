@@ -1,0 +1,13 @@
+audio.c:36:5:audio_Initialize	16	static
+audio.c:232:5:audio_Mute	8	static
+audio.c:241:5:audio_AudioGenerator	24	static
+audio.c:302:5:audio_ComputeN	16	static
+audio.c:358:5:audio_ComputeCts	24	static
+audio.c:44:5:audio_Configure	48	static
+audio.c:436:6:audio_DmaRequestAddress	16	static
+audio.c:443:5:audio_DmaGetCurrentBurstLength	8	static
+audio.c:449:5:audio_DmaGetCurrentOperationAddress	8	static
+audio.c:456:6:audio_DmaStartRead	8	static
+audio.c:463:6:audio_DmaStopRead	8	static
+audio.c:469:6:audio_DmaInterruptEnable	16	static
+audio.c:475:4:audio_DmaInterruptEnableStatus	8	static

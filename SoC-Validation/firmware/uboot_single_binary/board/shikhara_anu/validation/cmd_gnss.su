@@ -1,0 +1,8 @@
+cmd_gnss.c:220:5:do_gnss_test_buff	8	static
+cmd_gnss.c:159:13:tenms_interrupt	24	static
+cmd_gnss.c:40:6:Init_GlobalData	0	static
+cmd_gnss.c:62:5:gps_uart_init	0	static
+cmd_gnss.c:99:5:gps_putc	0	static
+cmd_gnss.c:112:6:gps_uart_write	8	static
+cmd_gnss.c:125:6:VerifyChecksum	24	static
+cmd_gnss.c:238:5:do_gnss_test	16	static

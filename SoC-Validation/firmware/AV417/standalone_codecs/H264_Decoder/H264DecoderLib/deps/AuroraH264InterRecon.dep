@@ -1,0 +1,10 @@
+
+AuroraH264InterRecon.o:	\
+	./H264DecoderLib/H264SIMDDec/AuroraH264InterRecon.cpp \
+	./H264DecoderLib/H264SIMDDec/ARCMedia.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264Dec.h \
+	./H264DecoderLib/H264SIMDDec/AuroraRecMgr.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264VerFiltering.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264HorFiltering.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264CtrPelFiltering.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264QPelFiltering.h 

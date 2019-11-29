@@ -1,0 +1,4 @@
+mutex.c:17:5:mutex_Initialize	0	static
+mutex.c:38:5:mutex_Destruct	0	static
+mutex.c:60:5:mutex_Lock	0	static
+mutex.c:81:5:mutex_Unlock	0	static

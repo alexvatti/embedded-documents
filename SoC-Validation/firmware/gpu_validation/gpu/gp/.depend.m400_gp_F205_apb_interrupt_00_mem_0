@@ -1,0 +1,3 @@
+m400_gp_F205_apb_interrupt_00_mem_0.o: \
+ m400_gp_F205_apb_interrupt_00_mem_0.c \
+ m400_gp_F205_apb_interrupt_00_mem_0.h

@@ -1,0 +1,4 @@
+shikhara_mipi_dsi_bridge.c:25:4:mipi_dsi_bridge_init	8	static
+shikhara_mipi_dsi_bridge.c:80:6:dsi_bridge_enable	0	static
+shikhara_mipi_dsi_bridge.c:90:6:dsi_bridge_disable	0	static
+shikhara_mipi_dsi_bridge.c:114:6:do_dsi_disable	8	static

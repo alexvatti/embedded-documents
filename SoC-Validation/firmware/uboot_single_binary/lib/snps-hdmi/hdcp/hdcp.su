@@ -1,0 +1,14 @@
+hdcp.c:26:5:hdcp_Initialize	16	static
+hdcp.c:83:5:hdcp_Configure	24	static
+hdcp.c:216:4:hdcp_EventHandler	40	static
+hdcp.c:291:6:hdcp_RxDetected	16	static
+hdcp.c:297:6:hdcp_AvMute	16	static
+hdcp.c:303:6:hdcp_BypassEncryption	16	static
+hdcp.c:310:6:hdcp_DisableEncryption	16	static
+hdcp.c:317:5:hdcp_Engaged	8	static
+hdcp.c:323:4:hdcp_AuthenticationState	8	static
+hdcp.c:330:4:hdcp_CipherState	8	static
+hdcp.c:336:4:hdcp_RevocationState	8	static
+hdcp.c:342:5:hdcp_SrmUpdate	32	static
+hdcp.c:401:4:hdcp_InterruptStatus	0	static
+hdcp.c:406:5:hdcp_InterruptClear	8	static

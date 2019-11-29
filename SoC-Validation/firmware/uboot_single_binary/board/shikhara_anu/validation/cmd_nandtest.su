@@ -1,0 +1,2 @@
+nand.h:67:19:nand_block_isbad	8	static
+cmd_nandtest.c:23:5:do_nand_test	136	static

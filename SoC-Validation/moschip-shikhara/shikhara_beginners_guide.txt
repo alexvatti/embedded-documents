@@ -1,0 +1,1477 @@
+#############################################################################################################################
+                        Brief Note on SHIKHARA U-boot Existing in CVS
+#############################################################################################################################
+
+
+CONTENTS:
+
+Building Proceedure Of  BL0
+----------------------------
+
+Building Proceedure Of  BL1
+----------------------------
+
+BUILD PROCEDURE OF BL0 FOR SRAM and BL1 FOR DDR
+-----------------------------------------------
+
+U-BOOT
+---------
+STEPS TO CHECKOUT SHIKHARA U-BOOT FROM CVS AND COMPILE
+BUILDING SHIKHARA U-BOOT WITH DIFFERENT FLAGS
+RUNNING PMU TEST THROUGH U-BOOT
+SHIKHARA SPECIFIC U-BOOT COMMANDS
+U-BOOT GENERIC COMMANDS
+STEPS for working with chipselect for SPI
+Saving Environment Variables On SPI Flash
+GNSS integration into u-boot
+
+MALI-400
+---------
+MALI-400 test suite integration into U-boot
+
+ARC U-BOOT
+-----------
+ARC U-BOOT COMPILATION STEPS
+STEPS TO LOAD ARC U-BOOT ON BOARD
+STEPS TO ADD A NEW COMMAND TO ARC U-BOOT
+STEPS TO BUILD A TOOLCHAIN FOR ARC-PROCESSOR
+STEPS TO COMPILE A LINUX-KERNEL FOR ARC-PROCESSOR
+
+LINUX
+-------
+Steps to compile Basic Linux Kernel For Zynq based Shikhara platform
+Steps to port Basic Linux Kernel On Zynq based Shikhara platform
+Porting 3.10 Linux Kernel On Zynq based Shikhara platform
+
+Steps to Access GPIO pin's from Linux user space
+-------------------------------------------------
+
+USB DRD controller in kernel knowhow
+--------------------------------------
+
+Firmware upgrade using USB(fut) tool
+-------------------------------------
+
+Steps to create a ramdisk out of a minimal rootfs
+---------------------------------------------------
+
+Steps to add binaries to ramdisk8M.image.gz
+---------------------------------------------
+
+STEPS TO COMPILE AND EXECUTE AV417 Application
+-----------------------------------------------
+
+DEBUGGING TOOL
+---------------
+HOW TO USE ARM DS-5 and Creating axf and elf files
+Connecting ARM DSTREAM through Ethernet/USB
+Placing Breakpoints,Watchpoints & Hardware Breakpoints in DS-5 DSTREAM
+Connecting to Multi-cores using DSTREAM
+
+QEMU
+-----
+Working On QEMU - Getting Started
+Using Qemu for Linux kernel Development
+Steps to run qemu on Mosdroid
+Pheripherals validation with qemu
+
+###########################
+Building Proceedure Of  BL0
+###########################
+
+1) For building the BL0 code check out the u-boot from the following path
+    cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/uboot
+2) Compile BL0 and Configure u-boot with the following commands
+    a) make anusoc_config
+    b) make bl0_spl/bl0.bin
+3) BL0 code is meant for ROM. BL0 code initializes the booting devices like SPI Flash,MMC,NAND and NOR and copy BL1 into SRAM.
+4) BL0 code gets created with the CONFIG_BL0_BUILD flag 
+5) BL0 code is having the it's own linker file named as u-boot-bl0.lds
+6) BL0 code is having like the following memory layout given by above linker file
+7) While executing the BL0 code it's copies the data section into sram and clears bss section.
+8) BL0 verifies the BL1 image and copies BL1 to SRAM when BL1 build with Image header.
+
+
+           The following Addresses are based on Zynq Base fpga
+
+                                       
+	         ROM(BL0)FLASH                     BL0 ON SRAM
+   0x5d5b0000 |---------------|    0x5D5C8C00  |---------------|
+              |   Text& RO    |                |   DATA & BSS  |
+	      |   Data        |    0x5D5CA600  |---------------|
+              |---------------|                |   Malloc      |
+              |   Data        |    0x5D5CE600  |---------------|
+              |---------------|                |    Stack      |
+              |   BSS         |    0x5D5CFA00  |---------------| 
+              |---------------|
+    
+###########################
+Building Proceedure Of  BL1
+###########################
+
+1) For building the BL1 code check out the u-boot from the following path
+    cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/uboot
+2) Compile BL1 and Configure u-boot with the following commands
+    a) make anusoc_config
+    b) make bl1_spl/bl1.bin produces bl1.bin,bl1 and bl1_img.
+3) BL1 code is meant for SRAM. BL1 code initializes the booting devices like SPI Flash,MMC,NAND and NOR and copy BL2(u-boot) 
+into DDR2
+4) BL1 code gets created with the CONFIG_BL1_BUILD flag
+5) BL1 code is having the it's own linker file named as u-boot-spl.lds.The linker file gives the following memory layout
+6) While executing the BL1 code it's copies the datasection into DDR2 and clears the bss section
+7) To Build BL1 with Image header. Compile BL1 by defining flag CONFIG_BL1_IMAGE present in include/configs/anusoc.h file.Then BL1 gets created with image header.
+8) bl1_img gets created with the mkimage tool present in the tools directory of u-boot.This tool added a header to the bl1 as like
+ the following.
+    /tools/mkimage -T firmware -a $(CONFIG_SPL_TEXT_BASE) -d bl1.bin bl1_img
+
+           The following Addresses are based on Zynq Base fpga
+
+
+                SRAM(BL1)                         BL1 ON Zynq DDR2
+   0x5d5C0000 |---------------|    0x0x1000000 |---------------|
+              |   Text& RO    |                |   DATA & BSS  |
+              |   Data        |    0x0x100000  |---------------|
+              |---------------|                |   Malloc      |
+              |   Data& BSS   |      0x104000  |---------------|
+              -----------------                |   Stack       |
+                                     0x800000   ---------------
+NOTE: By default there is no Image header for BL1.
+####
+
+################################################
+BUILD PROCEDURE OF BL0 FOR SRAM and BL1 FOR DDR
+################################################
+To test BL0 on SRAM instead of ROM change the following files.
+
+1.To Build BL0 for sram change CONFIG_BL0_TEXT_BASE address present in uboot folder board/shikhara_anu/anusoc/config.mk to 0x5D5C0000  where 0x5D5C0000 is SRAM Base address. and also change text_end address present in  board/shikhara_anu/anusoc/u-boot-bl0.lds 
+  to 0x5D5C8C00.
+
+2.To Build BL1 for DDR change CONFIG_SPL_TEXT_BASE address present in board/shikhara_anu/anusoc/config.mk to 0x40300000. 
+  where 0x40300000 is DDR address. 
+
+3.BL0 copies BL1 to DDR instead of SRAM.For that relplace the sram_addr present in arch/arm/cpu/armv7/load_uboot.c  with 0x40300000.
+
+4.change the CONFIG_V7ONCHIP_SRAM_BASE flag present in arch/arm/cpu/armv7/start.S to 0x40300000 and follow the build steps for bl0
+  and bl1 
+
+5.To test BL0 and BL1 follow the procedure mentioned in Shikhara_FPGA_Validation_Test_Report.doc. To test BL1 image load bl1_img
+  instead of bl1.bin.
+
+        Memory flow of BL0 and BL1 when image header is added
+
+		  SRAM                                         V7 DDR
+   0x5d5C0000 |---------------|               0x40300000 |---------------|
+              |   BL0         |                          |   BL1 IMAGE   |
+              |               |                          |   HEADER      |
+	      |---------------|               0x40300040 |---------------|
+                                                         |    BL1        |
+                                                         |               |
+							 |---------------|
+							 |               |
+				              0x50300000 |---------------|
+							 |     U-BOOT    |
+							 |---------------|
+SHIKHARA U-Boot:
+################
+
+This U-boot only consists of SHIKHARA specific files along with architecture files and also the drivers specific to SHIKHARA
+
+This U-boot consists of code that also supports:
+1)      Interrupts
+2)      Initialization of GIC
+3)      L2 cache controller
+4)      support MMU & D-cache
+5)      GPIO boot LED glowing
+6)      Validation codes for different phereipherals like lcd,Rtc,spi  
+#########################################################
+STEPS TO CHECKOUT SHIKHARA U-BOOT FROM CVS AND COMPILE:
+#########################################################
+
+1)      For Compilation of u-boot, Tool-chain is made available on MOSDROID server(192.168.200.203) as arm-none-eabi-
+
+        Update your .bashrc(MOSDROID) file with:
+
+        export CVSROOT=:pserver:username@192.168.200.231:/data/safe/cvs/soc
+        PATH=/opt/exynos_toolchain/arm-2010q1/bin:$PATH
+        export PATH
+
+2)      To Check-out from CVS, follow the step below:
+
+        cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/uboot
+
+3)      cd firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/uboot
+
+4)	compile u-boot by using single command 
+	make anusoc
+	 (or)
+	Follow 5th and  6th step.		
+		
+5)      To Configure the board,follow the below step:
+
+        make ARCH=arm CROSS_COMPILE=arm-none-eabi- anusoc_config
+
+	Here,Our board name is anusoc
+
+6)      To Compile the uboot,follow the below step:
+
+	make ARCH=arm CROSS_COMPILE= arm-none-eabi-
+
+On U-boot Top directory, Hence u-boot.bin is created.
+
+################################################
+BUILDING SHIKHARA U-BOOT WITH DIFFERENT FLAGS
+################################################
+Shikhara U-boot can be build with different flags present in anusoch.h:
+1.For ZYNQBASED FPGA Enable the flag CONFIG_SHIKHARA_ZYNQBASED_FPGA 
+2.For ZYNQBASED FPGA WITH DDR, Enable the flag SHIKHARA_CONFIG_FPGA and CONFIG_SHIKHARA_DDR_READY 
+3.For CORETILEBASED_FPGA  Enable the flags  CONFIG_SHIKHARA_CORETILEBASED_FPGA and CONFIG_SHIKHARA_DDR_READY
+4.For ASIC, Enable the flag SHIKHARA_CONFIG_ASIC
+Note:
+1.anusoch.h file present in uboot directory include/configs/anusoch.h
+
+###################################
+RUNNING PMU TEST THROUGH U-BOOT
+###################################
+
+1.The Cortex-A9 processor PMU provides six counters to gather statistics on the
+  operation of the processor and memory system
+
+2.We Integrated PMU counter support in uboot and added support of dumping
+  PMU counters through u-boot cmake ARCH=arm CROSS_COMPILE= arm-none-eabi-ommand
+
+3.Command Implementation can be found in following Path:
+  board/shikhara_anu/validation/cmd_pmutest.c
+
+4.We can check the working functionality by giving following command in u-boot Prompt by Enabling Validation flag:
+  shikhara-uboot> pmutest 0 1  - Dumps the PMU counters
+
+####################################
+SHIKHARA SPECIFIC U-BOOT COMMANDS
+####################################
+
+sysconfig- sysconfig - Command to test system configuration registers which is used to test DT timers
+pmutest- Command to Print PMU counters information
+dmatest - Test DMA with memory to memory copy a data no parameters required
+membuff - Validation support to create and compare two buffers
+apkybd  - Validation support to test the KMI(pl-50)controller
+apmouse - Validation support to test the KMI(pl-50)controller
+gputest - TestGPU
+sram_test- TESTING SRAM: Enter the string to write/read into SRAM
+lcd     -  fill: To fill lcd screen with a color, rect: To draw rectangle
+
+###########################
+U-BOOT GENERIC COMMANDS
+###########################
+
+base    - print or set address offset
+boot    - boot default, i.e., run 'bootcmd'
+bootd   - boot default, i.e., run 'bootcmd'
+bootm   - boot application image from memory
+cls     - clear screen
+cmp     - memory compare
+cp      - memory copy
+crc32   - checksum calculation
+date    - get/set/reset date & time
+editenv - edit environment variable
+env     - environment handling commands
+go      - start application at address 'addr'
+help    - print command description/usage
+iminfo  - print header information for application image
+loadb   - load binary file over serial line (Kermit mode)
+loads   - load S-Record file over serial line
+loady   - load binary file over serial line (ymodem mode)
+loop    - infinite loop on address range
+md      - memory display
+mm      - memory modify (auto-incrementing address)
+mtest   - simple RAM read/write test
+mw      - memory write (fill)
+nm      - memory modify (constant address)
+printenv- print environment variables
+reset   - Perform RESET of the CPU
+run     - run commands in an environment variable
+setenv  - set environment variables
+bmp     - print bmp file located in memory
+
+
+############################################
+STEPS for working with chipselect for SPI
+############################################
+
+   i)  Directly using SSPFSSOUT as Chip Select Select
+       Problem: The problem with this option is whenever we transfer data, SSPFSSOUT is becoming low(Acceptable) and high(Not Acceptable) for sometime which is deselecting slave.
+   ii) Inorder to avoid above problem we are having two options
+       1. connecting SSPFSSOUT signal to nSSPOE signal
+          This can be achieved by writing 0x25 into SPI_CONFIG system controller register.
+          Problem: The problem with this option is we have to fill the spi fifo before enabling the spi controller, if the spi fifo is filled after enabling spi controller, after transferring one byte, controller will treat fifo as empty and nSSPOE signal becomes high, which deselects the spi lave.
+       2. Setting SSPFSSOUT signal value.
+          This can be achieved by setting 0x22 into SPI_CONFIG system controller register.
+          (Among the options mentioned above this option is recommended, while working with Shikhara SPI)
+          Problem: The problem with this option is we have to manually set 0x22 to SPI_CONFIG register while transferring data and 0x26 after completion of transfer.
+
+############################################
+Saving Environment Variables On SPI Flash
+############################################
+
+     1. Type pri on the uboot console
+        shikhara-uboot> pri
+        baudrate=115200
+        bootcmd=run modeboot
+        bootdelay=3
+        ipaddr=192.168.200.40
+        serverip=192.168.200.1
+        stderr=serial
+        stdin=serial
+        stdout=serial
+        Environment size: 152/262140 bytes
+
+     2. Type set serverip 192.168.200.138 and call save, to save a environmental variable.
+        shikhara-uboot> set serverip 192.168.200.138
+        shikhara-uboot> save
+        Saving Environment to SPI Flash...
+        SF: Detected M25P128 with page size 256, total 16 MiB
+        SF: Detected M25P128 with page size 256 KiB, total 16 MiB
+        Erasing SPI flash...Writing to SPI flash...done
+        shikhara-uboot> pri
+        baudrate=115200
+        bootcmd=run modeboot
+        bootdelay=3
+        ipaddr=192.168.200.40
+        serverip=192.168.200.138
+        stderr=serial
+        stdin=serial
+        stdout=serial
+        Environment size: 154/262140 bytes
+
+Note: "While booting uboot if we get message as "bad CRC,using default environment", then we can avoid this problem by saving environment variables(using set serverip 192.168.200.138 and save commands)
+
+################################
+GNSS integration into u-boot
+################################
+
+Global Navigation Satellite System (G.N.S.S) is a system of satellites that
+provides autonomous geo-spatial positioning with global coverage. The GNSS
+hardware in our case communicates over SPI protocol, the hardware is
+responsible for continuous tracking and acquisition of satellites and the
+data thus obtained is processed by proprietary firmware to provide
+progressive input data to the hardware and output latitude, longitude and
+altitude values in a human readable format.
+
+The GNSS IP places the following conditions for proper functioning of the
+system.
+    a. The hardware emits an interrupt every 10ms, which indicates data is
+ready to be read.
+    b. The data must be read after 100 us and processed and input must be given
+back to the hardware within 8ms.
+    c. The data thus obtained for every 10ms is assembled and processed every
+250ms to provide usable location fix.
+
+    d. Since every test is equivalent to a cold start, the test must be run for
+some time to allow for sufficient tracking and acquisition.
+
+The following changes were made to the u-boot code to enable the GNSS
+functionality in u-boot.
+
+1. Added flags to Makefile to add libgps.a to the build and other dependent
+libraries viz., libm,libc.
+
+2. Created driver to fulfill the following constraints.
+    a. Transfer 1451 words of data over SPI every 10ms. This is done in 10ms the
+interrupt handler.
+    b. Calculate the acquired data every 250 ms to get NMEA messages.
+    c. Display the latitude, longitude and altitude once the position has been
+acquired.
+    d. Setup and use and addition UART in a non blocking mode to display
+raw NMEA messages.
+    e. Flags to enable tracking and acquisition DEBUG, viz., DUMP_20INT_DEBUG
+and TRACK_DATA_DEBUG
+
+3. A UI is placed at the following location that would give a better view of the
+Satellite information.
+
+        cvs co firmware/Shikhara_ANUSOC/tools/GNSS_UI
+
+Note. In order to meet the timing requirements we use DMA to transfer over SPI
+and copy the buffer to zynq DDR for faster processing.
+
+Compilation:(Shikhara)
+  1. Checkout the u-boot code and the GPU validation from the server
+      cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/gps-fw
+      cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/uboot
+
+  2. copy the PIE enabled build of libgps.a  to the folder lib/gnss-fw/ in
+u-boot
+      cp ../gps-fw/GAGAN_PIE_build/libgps.a lib/gnss-fw/
+
+  3. Build u-boot after making sure the following Flags are enabled.
+      CONFIG_GNSS
+
+Execution:
+  run the command gnss_test at the u-boot prompt.
+  e.g gnss_test
+        this runs the test continuously till ctrl-c is pressed.
+connect the UI over com2 port of Shikhara board to display Satellite information.
+SV Id 40,41 are Gagan satellites.
+
+##############################################
+MALI-400 test suite integration into U-boot
+##############################################
+
+The Mali-400 is a 3D Graphics Accelerator. To validate it, the bare
+metal integration tests have bmake ARCH=arm CROSS_COMPILE= arm-none-eabi-een built into u-boot. In order to achieve the
+required test environment the following changes have been made to the U-boot
+environment.
+
+1. Created a driver to initialize Mali and to setup clocks.
+2. As the tests are based on function pointers we have used it to create an
+interactive U-boot command based on the test number.
+3. once the test passes the results and some performance measurements are
+printed on the screen.
+4. The tests follow a common framework that divides the test into a number of
+sub-tests based on the the order interrupts are received
+5. each sub test has two parts
+    a. The setup part: this is where the input data , page tables and the
+processor configuration is done.
+    b. The validation part: this is where the results are compared with the
+predefined output data and the test case is validated.
+6. The Mali GPU is a AXI master , hence any memory setup must be done before
+the GPU is started, including setup of Page-tables and register dumps.
+7. Mali GPU expects to be handled in a MMU enabled environment, hence the data
+must be setup in form of a 2-level Page-table present a page aligned address.
+In order to achieve this the input data and the reference output data are placed
+at Page aligned addresses using linker script attributes.
+8. A Standalone test that checks the complete path of the GPU data flow has been
+created and the main object of which would be to render a single frame of data on
+to a framebuffer.
+
+The following files have been added to the u-boot code base, the description
+briefly explains what each file is about.
+
+  shikhara_gpu.c    :Shikhara specific code ,initialize clock to Mali.
+  MaliTop.c         :The Top level test framework
+  MaliFns-sysintf.c :Interrupt handler registration and interrupt enable.
+  MaliFns-generic.c :APIs used for Mali memory and register compares.
+  MaliFns-m400.c    :Functions that are used to access MALI.
+  MaliFns-m400perf.c:Mali Performance Counters implementation.
+
+  gpu_validation
+        |
+        |--->gp/ : all Geometric Processor test-cases
+        |
+        |--->pp*/: Pixel Processor specific test-cases
+        |
+        |--->mp*/: MMU test-cases for GP,PP
+        |
+        |--->proxycon: a 4 PP test to check complete rendering Path
+Every test case has the following files.
+
+    <testname>_run.c the test code to be executed.
+    <testname>_mem_*.c memory setup as page-tables.(may be more than one)
+    <testname>_check_*.h reference to validate the results.(may be more than
+one)
+
+Compilation:(Shikhara)
+
+  1. Checkout the u-boot code and the GPU validation from the server
+      cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/gpu_validation
+      cvs co firmware/Shikhara_ANUSOC/bootloader/uboot_phase1/uboot
+
+  2. Build u-boot after making sure the following Flags are enabled.
+        CONFIG_SHIKHARA_GPU, CONFIG_RELOCATION_OFF to build the integration tests.
+        or
+        CONFIG_GPU_SCENE to enable the Scene generation
+  3. Include CONFIG_GPU_PROXYCON to execute the 4 PP test (valid ony for ASIC)
+
+Execution:
+
+ 1. run gputest command at the u-boot command line followed by the Mali
+internal processor to be checked followed by test number.
+
+  e.g gputest gp 3
+
+  this runs the GP group 3rd test(starting from 0).
+
+ 2. run gpu_scene command at the u-boot command line to execute the complete GPU data flow
+test
+
+  e.g. gpu_scene
+
+
+################################
+ARC U-BOOT COMPILATION STEPS
+################################
+
+1.get ARC-Tool chain(arc-toolchain.tar.bz) from //192.168.200.242/kdocs/Knowledge_Docs/Projects_Based/Shikhara_ANUSoC/KnowledgeDocs/  ARC_based/ARC_CPU_CORE/DevelopmentBoard/HAPS_Board/Haps51/source/tool_chain/
+untar the arc-toolchain.tar.bz and export the path of cross compiler in bshrc file.
+export PATH=$PATH:ARC_TOOLCHAIN/bin/ and source the bashrc file using source ~/.bashrc
+
+(or)
+
+2.ARC-Tool chain  is also  present in mosdroid at /opt/ARC_TOOLCHAIN.
+export the path of cross compiler in mosdroid bashrc file.
+export PATH=$PATH:/opt/ARC_TOOLCHAIN/bin/ and source the bashrc file using source ~/.bashrc.
+
+
+3.check out u-boot source code (foss-for-synopsys-dwc-arc-processors-u-boot-bee037f) from cvs  by using  cvs co firmware/Shikhara_ANUSOC/bootloader/ARC_UBOOT/
+
+4: Go to the folder
+
+foss-for-synopsys-dwc-arc-processors-u-boot-v2012.07-25-bee037f
+
+
+5: To configure for haps51 board use the following command
+
+make ARCH=arc CROSS_COMPILE=arc-elf32- snps_haps51_config
+
+
+6: To compile the source
+
+make ARCH=arc CROSS_COMPILE=arc-elf32-
+
+7.after successfull compilation compiler will generate u-boot and u-boot.bin files.
+
+II.STEPS TO LOAD ARC U-BOOT ON BOARD
+##########################################
+
+1.app_jump.bin file is required to load ARC U-Boot code on V7-DDR.
+
+2.start with mmc_start command
+
+3.Load jump application binary onto sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_jump.bin
+
+4.Load the u-boot binary file onto the ddr using below command.
+       fatload mmc 0:1 0x41d00000 u-boot.bin
+
+5.Reset the arc processor using "av417reset" arm uboot command.
+
+6.After reset, u-boot.bin will run on board.
+
+III.STEPS TO ADD A NEW COMMAND TO ARC U-BOOT
+#######################################################
+1.Create a file under "common" folder under U-boot code with name cmd_"name of command".c
+
+Ex: cmd_led_shikhara.c
+
+2.Under that file(cmd_led_shikhara.c) register commmand with U_BOOT_CMD(name,maxargs,rep,cmd,usage,help).
+
+Ex.U_BOOT_CMD(led_shikhara, 5, 0, do_led_shikhara,"led_blinking","led blinking as command").
+
+3.define funtionality of command in do_"command" function in same file(cmd_led_shikhara.c)
+
+EX:int do_led_shikhara (cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+
+
+4.modify Makefile in common folder by adding COBJS-$(CONFIG...) += respective objectfile
+
+Ex:COBJS-$(CONFIG_CMD_LED_SHIKHARA) += cmd_led_shikhara.o
+
+5.Define CONFIG MACRO (CONFIG_CMD_LED_SHIKHARA) in respective board headerfile present in include/configs/ folder under U-boot.
+
+
+IV.STEPS TO BUILD A TOOLCHAIN FOR ARC-PROCESSOR
+####################################################
+                                                 
+1.Get the buildroot-2014.05.tar.gz from 192.168.200.242/kdocs/Knowledge_Docs/Projects_Based/Shikhara_ANUSoC/KnowledgeDocs/ARC_based/ARC_CPU_CORE/tools_ARC_GCC/
+
+2.untar the file buildroot-2014.05.tar.gz using tar -xvf buildroot-2014.05.tar.gz command
+
+3.change the directory to buildroot-2014.05 and give command as make menuconfig
+
+4.select "target options -> Target architecture -> ARC (little endian)".and give command as make. After successfull compilation
+  binary files created under buildroot-2014.05/output/host/usr/bin/ folder
+
+
+V.STEPS TO COMPILE A LINUX-KERNEL FOR ARC-PROCESSOR
+#######################################################
+
+1.Get the prebuilt tool chain (prebuilt_uclibc_toolchain_for_arc.tar.gz) from 192.168.200.242/kdocs/Knowledge_Docs/Projects_Based/Shikhara_ANUSoC/KnowledgeDocs/ARC_based/ARC_CPU_CORE/tools_ARC_GCC/.
+
+ untar the prebuilt_uclibc_toolchain_for_arc.tar.gz and export the path of cross compiler in bshrc file.
+ export PATH=$PATH:/prebuilt_uclibc_toolchain_for_arc/output/host/usr/bin/ and source the bashrc file using source ~/.bashrc
+
+(or)
+
+2.Build the tool chain from buildroot and export the path of cross compiler in bashrc file and source it.
+
+3.Get the linux source linux-3.14.5.tar.xz  from 192.168.200.242/kdocs/Knowledge_Docs/Projects_Based/Shikhara_ANUSoC/KnowledgeDocs/ARC_based/ARC_CPU_CORE/ARC_LINUX/ . and untar the source file by using tar -xvf linux-3.14.5.tar.xz.
+
+
+4.Change the directory to linux-3.14.5 and configure the kernel for fpga board by using the following command
+
+make ARCH=arc CROSS_COMPILE=arc-linux- fpga_noramfs_defconfig
+
+5.To compile the source use command as
+make ARCH=arc CROSS_COMPILE=arc-linux- 
+
+6.After successfull compilation compiler will generate vmlinux and vmlinux.o files.
+
+Note:
+prebuilt_uclibc_toolchain is also used to compile ARC U-Boot.
+
+
+########################################################################
+Steps to compile Basic Linux Kernel For Zynq based Shikhara platform
+########################################################################
+
+To compile the kernel, Let's first set up cross-compiler toolchain.
+
+Toolchain is Installed on Mosdroid Server(192.168.200.203) in the following path:
+  
+    /opt/xilinx_toolchain/install_folder/bin
+
+Please Updated your Mosdroid local .bashrc file with the above path by
+issuing:
+  PATH=$PATH:/opt/xilinx_toolchain/install_folder/bin
+
+Update .bashrc by issuing: source .bashrc
+
+Check whether toolchain(arm-xilinx-linux-gnueabi) has been successfully
+installed.
+
+1.Checkout the linux kernel placed in CVS using following:
+        ---> cvs co firmware/Shikhara_ANUSOC/tot/linux-3.5.0_14.3_xilinx
+
+2.Use configuration file for Shikhara platform which is located in arch/arm/config/shikhara_zynq_fpga_defconfig.
+
+3.Make sure to enable CONFIG_ARM_APPENDED_DTB and disable CONFIG_XILINX_FIXED_DEVTREE_ADDR.
+
+4.Configure the kernel using, 
+	--->  make ARCH=arm CROSS_COMPILE=arm-xilinx-linux-gnueabi- shikhara_zynq_fpga_defconfig
+
+5.Following command compiles the kernel and creates zImage in /arch/arm/boot/zImage 
+	--->  make ARCH=arm CROSS_COMPILE=arm-xilinx-linux-gnueabi- zImage
+
+6.DTS file for shikhara platform is located in /arch/arm/boot/dts/shikhara.dts
+ Make sure the following:
+ 	i)  CPU frequency is 40000000
+	ii) UART clock is 100000000
+
+7.Now compile the dts file to generate devicetree.dtb output file, using following:
+        --->  ./scripts/dtc/dtc -I dts -O dtb -o devicetree.dtb arch/arm/boot/dts/shikhara.dts
+
+
+########################################################################################
+          Steps to port Basic Linux Kernel On Zynq based Shikhara platform
+########################################################################################
+Please refer section "Steps to compile Basic Linux Kernel For Zynq based Shikhara platform" to Create zImage and dtb fil for shikhara platform.
+
+By Default, Our Linux Kernel is made to compile for V7 DDR. 
+
+If We want to make Linux kernel to compile for Zynq DDR, following are the steps to be followed:
+---------------------------------------------------------------------------------------
+
+1. Create zImage, by making following changes in linux source.
+           (i). arch/arm/mach-zynq/Makefile.boot---->
+	 Change:
+	 FROM (V7 DDR)						TO (Zynq DDR)
+	 zreladdr-y   += 0x40008000			zreladdr-y   += 0x00008000
+         params_phys-y   := 0x40000100			params_phys-y   := 0x00000100
+         initrd_phys-y   := 0x40800000			initrd_phys-y   := 0x00800000
+
+	   (ii). In arch/arm/configs/shikhara_zynq_fpga_defconfig:
+		Change: Physical address of main memory (CONFIG_PHYS_OFFSET) from 0x40000000(V7-DDR) to 0x0(Zynq-DDR)
+
+2. Following Changes are needed to be done in shikhara.dts file:
+	(i) Change the memory range: From 0x40000000 - 0x53ffffff   To   0x00000000 - 0x10000000
+
+	Example for Zynq:  memory {
+                device_type = "memory";
+                reg = <0x00000000 0x10000000>;
+        };
+	
+	(ii) In bootargs, change initrd: FROM initrd=0x40800000  TO  initrd=0x800000
+	
+3.Append DTB file to zImage using:
+ 	cat devicetree.dtb >> arch/arm/boot/zImage/
+ 	
+4.Copy the zImage, file system images to SD card and booting from it results in linux prompt.
+
+Steps for loading the Zimage and rootfs on to the V7DDR from MMC:
+----------------------------------------------------------------
+1.Type mmc_start at the u-boot level for mmc initialization.
+2.Type fatls mmc 0:1 at the u-boot level to give list of files.
+3.Enter the following commands to load the zimage and rootfs.
+  fatload mmc 0:1 0x40008000 zimage
+  fatload mmc 0:1 0x40800000 ramdisk.img.gz
+  go 0x40008000
+  
+
+################################################################################################################
+        Instructions to be followed while porting 3.10 Linux Kernel On Zynq based Shikhara platform
+################################################################################################################
+
+In Linux-3.10 Kernel, Zynq platform support code is compiled for MULTI PLATFORM support which supports the SDRAM address of only 0x0. But for Shikhara v7 DDR, we need to disable the Multi platform support option to enable our v7 ddr address location 0x40000000
+
+The steps to be followed are:
+
+1. In arch/arm/Kconfig:
+
+(i)Comment the below option:
+#       default ARCH_MULTIPLATFORM if MMU
+
+#config ARCH_MULTIPLATFORM
+#       bool "Allow multiple platforms to be selected"
+#       depends on MMU
+#       select ARM_PATCH_PHYS_VIRT
+#       select AUTO_ZRELADDR
+#       select COMMON_CLK
+#       select MULTI_IRQ_HANDLER
+#       select SPARSE_IRQ
+#       select USE_OF
+
+
+(ii)Now Add the Zynq support in this file as below:
+config ARCH_ZYNQ
+        bool "Xilinx Zynq ARM Cortex A9 Platform" if ARCH_MULTI_V7
+        select ARM_AMBA
+        select ARM_GIC
+        select COMMON_CLK
+        select CPU_V7
+        select GENERIC_CLOCKEVENTS
+        select HAVE_ARM_SCU if SMP
+        select HAVE_ARM_TWD if LOCAL_TIMERS
+        select ICST
+        select MIGHT_HAVE_CACHE_L2X0
+        select USE_OF
+        select HAVE_SMP
+        select SPARSE_IRQ
+        select CACHE_L2X0
+        select ARCH_REQUIRE_GPIOLIB
+        select COMMON_CLK
+        select ARCH_HAS_CPUFREQ
+        select ARCH_HAS_OPP
+        select MIGHT_HAVE_PCI
+        select CADENCE_TTC_TIMER
+        help
+          Support for Xilinx Zynq ARM Cortex A9 Platform
+
+Only by making above changes, in menuconfig we will be able to set v7 DDR address
+
+###################################################################################
+        Steps to Access GPIO pin's from Linux user space
+###################################################################################
+
+1.  To export GPIO pin, operation you simply need to echo the GPIO number you are interested to a special path as follow (change XX with the GPIO number you need):
+        -->     echo XX > /sys/class/gpio/export
+
+2.  To change direction to 'out' mode(default is 'in' mode).
+        -->     echo out > /sys/class/gpio/gpioXX/direction
+
+3. To write value '1' into gpio pin.
+        -->     echo 1 > /sys/class/gpio/gpioXX/value
+
+4. To unexport gpio pin.
+        -->     echo XX > /sys/class/gpio/unexport
+
+
+Similarly, We can use 'cat' command to read the status of gpio pin's after exporting them.
+
+################################################################################
+       USB DRD controller in kernel knowhow
+################################################################################
+
+DEBUGGING
+---------
+For enabling verbose messages to come on to kernel console enable the following flags in make menuconfig for USB.
+
+CONFIG_USB_DEBUG
+
+CONFIG_USB_ANNOUNCE_NEW_DEVICES
+
+CONFIG_USB_DWC3_DEBUG
+
+CONFIG_USB_DWC3_VERBOSE
+
+CONFIG_USB_XHCI_HCD_DEBUGGING
+
+################################################################################
+                Firmware upgrade using USB(fut) tool
+################################################################################
+
+Windows PC Users
+----------------
+ 1. Use Windows utility DNW.exe and USB driver. You can get the files from the below link and uncompress it.
+	192.168.200.242/kdocs/Knowledge_Docs/Topic_Based/Processors/Development-Boards/Samsung-ARM-Cortex/ODROID-PC_Full_Package/Docs/PC_Tools/windows-dltool/windows-dltool.zip
+			OR
+ 2. Use this link to download from internet and uncompress it.
+	http://dev.odroid.com/projects/linux/download/4?filename=windows-dltool.zip.
+ 3. After uncompression, you fill find three files: 
+	1) dnw1.01.exe 
+	2) secusb2.inf 
+	3) secusb2.sys
+ 4. Connect PC serial port with Serial Cable, run serial communication software in PC and configure serial port options.
+ 5. Turn on Shikhara board and boot the shikhara bootloader using ARM DSTREAM.
+ 6. Press any key quickly to remain on the u-boot console.
+ 7. With "fut" command, you can download any binary file to Shikhara RAM from PC via USB. 
+ 8. Connect the USB cable on to both PC and board and type following commands on u-boot console to start transfer.
+   	shikhara-uboot> fut <RAM address>	eg: fut 0x40300000
+	IP version is 2.60a
+	USB cable Connected![0x4]
+	Download address 0x40300000
+	Now, Waiting for USB Host to transmit data
+ 9. On host PC, execute DNW utility. But, install the USB driver first. Driver installation is only required for the first time of USB connection. 
+ 10. As you execute "fut" command, Windows starts the Found New Hardware Wizard and prompts to install the drivers.
+ 11. Select Install from a list or specific location (Advanced) and then click Next.
+ 12. Select Search for the best driver in these locations, and check the Include this location in the search option. Click Browse. Browse to the known location on your host PC      of the driver installation files(where you uncompressed the dltool zip folder). Click OK, then click Next.
+ 13. A warning may appear during the installation process to caution that the driver is not signed; click Continue Anyway to proceed. 
+ 14. After the installation of the USB drivers completes, click Finish to close the dialog box. The drivers for "fut" has now been installed.
+ 15. Execute the DNW utility software, go to Configuration options and set the download address to the same address given in "fut".
+ 16. Start the download with the menu for USB Port -> Download to select file to send.
+ 17. After downloading, the Serial terminal will show the below message.
+	shikhara-uboot> Download Done!! Download Address: 0x40300000, Download Filesize: 0xxxxxxx
+
+
+Linux PC Users
+--------------
+ 1. Use Linux utility smdk-usbdl. You can get the files from the below link and uncompress it.
+       192.168.200.242/kdocs/Knowledge_Docs/Topic_Based/Processors/Development-Boards/Samsung-ARM-Cortex/ODROID-PC_Full_Package/Docs/PC_Tools/Linux-usb_dltool/smdk-tools-v0.20.tar.gz
+					OR
+ 1. Use this link to download from internet and uncompress it.
+	http://www.fluff.org/ben/smdk/tools/downloads/smdk-tools-v0.20.tar.gz
+ 2. To execute smdk-usbdl, you need to install libusb and libusb-compat.
+ 3. Follow the steps to install libusb on your host PC:
+	- Download the latest tarball of libusb and libusb-compat from "http://www.libusb.org/".
+	- Uncompress libusb tarball and perform following steps:
+	   i. Install libusb by running the following commands:
+	      ./configure --disable-udev --prefix=/usr --disable-static && make  
+	   ii. Now, as the root user:
+	       make install
+ 	- Uncompress libusb-compat tarball and perform following steps: 
+	   i. Install libusb-compat by running the following commands:
+	      ./configure --prefix=/usr --disable-static && make
+           ii. Now, as the root user:
+               make install
+ 4. Uncompress smdk-tools-v0.20.tar.gz. 
+ 5. Go to the uncompressed folder, make changes to the Makefile so as to point to libusb library and header files for compiling.
+ 	eg: $(CC) -O2 -Wall -o smdk-usbdl dltool.c -L/usr/lib/ -lusb -I/usr/include/libusb-1.0/ 
+ 6. Type make to compile the source. After successful compilation, smdk-usbdl binary will be created.
+ 7. Follow steps 4-8 mentioned above for windows.
+ 8. You can check whether USB connection is correct or not with lsusb command.
+ 9. To start download, use the smdk-usbdl command.
+	sudo ./smdk-usbdl -f <file> -a <address>		eg: sudo ./smdk-usbdl -f u-boot.bin -a 0x4008000
+ 10. After downloading, PC will show the below message
+	SMDK42XX,S3C64XX USB Download Tool
+	Version 0.20 (c) 2004,2005,2006 Ben Dooks <ben-linux@fluff.org>
+	S3C64XX Detected!
+	=> found device: bus 004, dev 006
+	=> loaded xxxx bytes from xxxxxx
+	=> Downloading xxxxxx bytes to 0x40008000
+	=> Data checksum xxxx
+	=> usb_bulk_write() returned xxxxx
+ 11. After downloading, Serial terminal will show below message.
+	shikhara-uboot> Download Done!! Download Address: 0x40008000, Download Filesize: 0xxxxx
+
+
+##################################################################################
+	Steps to create a ramdisk out of a minimal rootfs
+##################################################################################
+
+1.  To create an initrd from scratch, tools such as Buildroot or Yocto may be used to populate the filesystem (with BusyBox, tools, etc.).
+        Alternatively, an empty initrd may be created and then populated with the desired filesystem contents as specified.
+
+2.  Create an 8MB image
+        dd if=/dev/zero of=ramdisk.image bs=1024 count=8192
+
+3.  Format it to a ext2 filesystem
+        mke2fs -F ramdisk.image -L "ramdisk" -b 1024 -m 0
+        tune2fs ramdisk.image -i 0
+
+4.  Apply relavent permissions.
+        chmod a+rwx ramdisk.image
+
+5.  Checkout the rootfs
+        cvs co firmware/Shikhara_ANUSOC/tot/filesystem/shikhara_rootfs.tgz
+
+6.  Create a mount point and mount the uncompressed image as a loop device.
+        sudo mount -o loop ramdisk.image <mount point>
+
+7.  copy the contents of the uncompressed rootfs to the mount point.
+        tar zxvf shikhara_rootfs.tgz -C <mount point>
+
+8.  Unmount the image to finish the task
+        sudo umount <mount point>/
+
+9. Compress the image to reduce footprint
+        gzip ramdisk.image
+
+###################################################################################
+	Steps to add binaries to ramdisk8M.image.gz
+###################################################################################
+
+1.  Check out the ramdisk from cvs.
+        cvs co firmware/Shikhara_ANUSOC/tot/filesystem/ramdisk8M.image.gz
+
+2.  Uncompress the ramdisk.
+        gunzip ramdisk8M.image.gz
+
+3.  Grant permissions to the uncompressed image to be a RW and executable.
+        chmod u+rwx ramdisk8M.image
+
+4.  Create a mount point and mount the uncompressed image as a loop device.
+        sudo mount -o loop ramdisk8M.image <mount point>
+
+5.  Copy the requied binary to the Ramdisk in the mount point
+        cp <binary> <mount point>/
+
+6.  Unmount the image to finish the task.
+        sudo umount <mount point>/
+
+7.  Compress the image to reduce footprint
+        gzip ramdisk8M.image
+
+
+#################################################################################################
+                STEPS TO COMPILE AND EXECUTE AV417 Application
+#################################################################################################
+
+I) Alpha Blending:
+
+Compilation:
+   1. Go to the folder(AV417_NEW\app_alphablending), Compile Alpha blending code using following command
+      hcac -arc700 -Hnocrt -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s shikhara_alphablend.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_ALPHABLENDING.out  -m > APP_ALPHABLENDING.map
+   2. Using linkage_zynq.txt file, compiler overwrite the sections(.text,.heap etc)with the address specified in linkage_zynq.txt.
+   3. Convert elf file to bin using elf2bin bin tool.
+      EX: elf2bin APP_ALPHABLENDING.out app_alphablending.bin
+
+ Execution:(ZYNQ FPGA)
+    1. Undefine CONFIG_SHIKHARA_DDR_READY macro to run uboot on zynq ddr.(Applicable to all AV417 Applications)
+       Enable display support by defining CONFIG_SHIKHARA_DISPLAYS macro and Run hdmi_enable Command.
+    2. Load the application binary on to on-chip sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_alphablending.bin
+    3. Load foreground and background images using the following command.
+       fatload mmc 0:1 0x41500000 background.raw
+       fatload mmc 0:1 0x415ff200 foreground.raw
+    4. After loading the required images, reset the arc processor using "av417reset" arm u-boot command.
+    5. After reset, Alpha blending Application runs from on-chip sram start address, and blended image will be displayed on HDMI Display.
+
+II) IPC:
+
+Compilation:
+   1. Compile arm uboot code.
+   2. Go to the folder(AV417_NEW\app_ipc), Compile ipc code using following command.
+      hcac -arc700 -Hnocrt -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s  main.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_IPC.out  -m > APP_IPC.map
+   3. After Compilation, application start address and symbols are present in ARC_IPC.maP file.
+   4. Using linkage_zynq.txt file, compiler overwrite the sections(.text,.heap etc) with the address specified in linkage_zynq.txt.
+   5. Convert elf file to bin using elf2bin bin tool.
+      EX: elf2bin ARC_IPC.out app_ipc.bin
+
+Execution:(ZYNQ FPGA)
+    1. Load the application binary on to on-chip sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_ipc.bin
+    2. After loading the binary onto sram, run "arcipc" command on arm u-boot code.
+    3. "arcipc" command, which writes data to ddr memory and generates interrupt to arc, the respective arc interrupt handler is called. arc writes data into ddr
+       memory and in turn generates interrupt to arm, In arm interrupt handler, the respective memory location is compared, if the data is not same, IPC
+       test is successfully completed.
+
+III) MPEG4 Decoding:
+
+Compilation:
+    1. Go to the folder(AV417_NEW\app_jump), Compile arc bootloader using below command.
+       hcac -arc700 -Hnocrt -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s  main.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_JUMP.out  -m > APP_JUMP.map
+    2. After compilation, convert elf to binary using below command
+       elf2bin APP_JUMP.out app_jump.bin
+    3. Go to (AV417_NEW\standalone_codecs\MPEG-4_Decoder), Compile the decoder application using below command.
+       gmake -f Makefile (by adding "-Hhostlib" flag in the Makefile)
+    4. After compilation convert elf into binary using below command
+       elf2bin mpegdec app_mpegdec.bin
+
+Execution:(ZYNQ FPGA)
+    1. Load jump application binary onto sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_jump.bin
+    2. load the decoder application onto the ddr using below command.
+       fatload mmc 0:1 0x41d00000 mpegdec.bin
+    3. load encoded.m4v file onto ddr.
+       fatload mmc 0:1 0x41b00000 encoded.m4v
+    4. Reset the arc processor using "av417reset" arm uboot command.
+    5. After reset, decoder application starts executing.
+    6. After execution of application, load the output video into a file using fatwrite command.
+       fatwrite mmc 0:1 0x41500000 decoded.yuv 0x567000
+    7. Play the yuv file using yuvplayer, if the resolution is other than 176*144.
+
+IV)MPEG4 Encoding:
+
+Compilation:
+    1. Go to the folder(AV417_NEW\app_jump), Compile arc bootloader using below command.
+       hcac -arc700 -Hnocrt -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s  ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s  main.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_JUMP.out  -m > APP_JUMP.map
+    2. After compilation, convert elf to binary using below command
+       elf2bin APP_JUMP.out app_jump.bin
+    3. Go to (AV417_NEW\standalone_codecs\MPEG-4_ENCODER), Compile the encoder application using below command.
+       gmake -f Makefile.win32.mpeg4 (by adding "-Hhostlib" flag in the Makefile)
+    4. After compilation convert elf into binary using below command
+       elf2bin mpeg4_encoder_app  app_mpeg4_encoder.bin
+
+Execution:(ZYNQ FPGA)
+    1. Load jump application binary onto sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_jump.bin
+    2. load the encoder application onto the ddr using below command.
+       fatload mmc 0:1 0x41d00000 mpeg4_encoder_app.bin
+    3. load input.yuv file onto ddr.
+       fatload mmc 0:1 0x41500000 input.yuv
+    4. Reset the arc processor using "av417reset" arm uboot command.
+    5. After reset, encoder application starts executing.
+    6. After execution of application, load the output video into a file using fatwrite command.
+       fatwrite mmc 0:1 0x41b00000 encoded.m4v 0x1dc00
+
+V) H264 Decoding:
+
+Compilation:
+    1. Go to the folder(AV417_NEW\app_jump), Compile arc bootloader using below command.
+       hcac -arc700 -Hnocrt -Hhostlib= -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s  ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s  main.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_JUMP.out  -m > APP_JUMP.map
+    2. After compilation, convert elf to binary using below command
+       elf2bin APP_JUMP.out app_jump.bin
+    3. Go to (AV417_NEW\standalone_codecs\H264_Decoder), Compile the decoder application using below command.
+       gmake -f Makefile (by adding "-Hhostlib" flag in the Makefile)
+    4. After compilation convert elf into binary using below command
+       elf2bin h264dec h264dec.bin
+
+Execution:(ZYNQ FPGA)
+    1. Load jump application binary onto sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_jump.bin
+    2. load the decoder application onto the ddr using below command.
+       fatload mmc 0:1 0x41d00000 h264dec.bin
+    3. load encoded.h264 file onto ddr.
+       fatload mmc 0:1 0x41b00000 encoded.h264
+    4. Reset the arc processor using "av417reset" arm uboot command.
+    5. After reset, decoder application starts executing.
+    6. After execution of application, load the output video into a file using fatwrite command.
+       fatwrite mmc 0:1 0x41500000 decoded.yuv 0x567000
+    7. Play the yuv file using yuvplayer, if the resolution is other than 176*144.
+
+VI)H264 Encoding:
+
+Compilation:
+    1. Go to the folder(AV417_NEW\app_jump), Compile arc bootloader using below command.
+       hcac -arc700 -Hnocrt -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s  main.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_JUMP.out  -m > APP_JUMP.map
+    2. After compilation, convert elf to binary using below command
+       elf2bin APP_JUMP.out app_jump.bin
+    3. Go to (AV417_NEW\standalone_codecs\H264_Encoder), Compile the encoder application using below command.
+       gmake -f Makefile.win32.h264 (by adding "-Hhostlib" flag in the Makefile)
+    4. After compilation convert elf into binary using below command
+       elf2bin h264_encoder_app  h264_encoder_app.bin
+
+Execution:(ZYNQ FPGA)
+    1. Load jump application binary onto sram address using below command.
+       fatload mmc 0:1 0x5d1f0000 app_jump.bin
+    2. load the encoder application onto the ddr using below command.
+       fatload mmc 0:1 0x41d00000 h264_encoder_app.bin
+    3. load input.yuv file onto ddr.
+       fatload mmc 0:1 0x41500000 input.yuv
+    4. Reset the arc processor using "av417reset" arm uboot command.
+    5. After reset, encoder application starts executing.
+    6. After execution of application, load the output video into a file using fatwrite command.
+       fatwrite mmc 0:1 0x41b00000 encoded.h264 0x13000
+
+
+VII) Steps to generate libct.a
+     1. Go to Metaware installed directory(Metaware/arc/lib/src/c/archieve/a7_p/lobj_o), Now using gmake -f Makefile, the library files will be compiled and generates libct.a(using arac command present in the given Makefile).            
+
+Note:
+Above compilations steps for codecs are for windows, for linux compile using the linux makefiles in the respective directory.
+
+#############################################################################
+        HOW TO USE ARM DS-5 and Creating axf and elf files
+#############################################################################
+
+Install ARM DS-5:
+
+1) DS-5 software is placed in the following path:
+\\192.168.200.242\kdocs\Knowledge_Docs\Projects_Based\Shikhara_ANUSoC\KnowledgeDocs\ARMBased\Debug_CoreSight\DS-5\DS-5_SOFTWARE
+2)When the installation is completed restart the host PC to apply the
+changes.If not it would not work correctly.
+3)You can see DS-5 installed in start---> All programs---->ARM DS-5
+4)Setting the Environmental variables for getting the license of DS-5
+as shown below
+1. Right Click on the MYcomputer
+2. Select the Properties and Choose the Advanced menu
+3. Select the Environment variables
+4. Give the Variable as LM_LICENSE_FILE and value as 8224@192.168.200.204
+
+To Create .axf file in DS-5, follow the steps below:
+1) In ARM DS-5,go to windows--->open perspective--->C/C++
+2) Create a new C project profile by clicking at File--->New--->C project
+   After giving name to project, Now an entry with the given name is created
+   in DS-5 project workspace.
+3) Import the files into the created project by Right-clicking on the new
+   entry
+4) Now to Build the project, select the new project which is just created, and
+   go to Project--->Build Project.
+5) You can see the created axf file resides in the debug folder of Project
+   entry.
+
+Creating elf file in DS-5:
+By Default, DS-5 is configured to create axf file.If we want it to create .elf
+files we need to follow the below steps:
+Follow the same above steps 1,2,and 3
+Now Before building the project.Right click on the project and select
+properties.
+Expand C/C++ build--->Toolchain editor--->Uncheck Display compatibletoolchains
+only---->select current tool-chain as DS-5 GCC--->current builder as GNU make
+builder.
+Now Build the project and elf is created.
+
+
+###########################################################################
+        Connecting ARM DSTREAM through Ethernet/USB
+###########################################################################
+
+Connect a DSTREAM unit to your host computer using either Ethernet or USB, and
+to target hardware using the require probe cables.
+
+To connect the DSTREAM unit to your host computer and to the target hardware,
+carry out the following:
+
+1.Connect the DSTREAM unit to the target hardware, using the appropriate debug
+  or trace cables:
+  (i) Connect one end of the supplied 100-way cable to the DSTREAM unit, and
+      connect the other end of the cable to the probe unit.
+
+  (ii)Connect the target hardware to the probe using the appropriate cables
+      and connector.
+
+2.Power-up the target hardware and power-up the DSTREAM unit.
+
+3.If you are connecting using the USB port, connect one end of the supplied
+  USB cable to a USB port on the host computer, and the other end of the cable
+  to the USB port on the DSTREAM unit.
+
+4.Connect the host computer to the DSTREAM unit using either the USB port or
+  a TCP/IP network connection.
+5.If you are connecting across an Ethernet network, connect the Ethernet port
+  of the DSTREAM unit to a socket for the Ethernet network using the supplied
+  RJ-45 Ethernet cable.
+6.Configure the IP address on a debug hardware unit using the installed
+  ConfigIP utility. This enables you to access your unit by Ethernet.
+
+PROBLEM CONNECTING ARM DSTREAM THROUGH ETHERNET:
+Unable to connect to target.
+
+Reason:
+Failed to communicate with debug hardware using 'TCP:hostname' - please check
+it is available.
+
+BELOW STEP FOLLOWS SOLUTION
+7.The hostname is configured inside the DSTREAM but also needs to be configured
+  on your DNS server (or OS "hosts" file) to connect to it this way.By doing
+  this we need to enter the DSTREAM IP address and Host name in the following path:
+  C:\WINDOWS\system32\drivers\etc\hosts
+
+
+################################################################################
+        Placing Breakpoints,Watchpoints & Hardware Breakpoints in DS-5 DSTREAM
+################################################################################
+
+Breakpoints:
+1.You can set a breakpoint by double-clicking in the left margin of a source or
+  disassembly line where the breakpoint symbol will appear.
+2.You can delete a breakpoint by double-clicking it, too.
+3.There is a list of the current breakpoints in the Breakpoints view.
+4.You can also right-click on a function in the Outline or Functions views and
+  choose the Toggle Breakpoint menu item.
+
+Watchpoints
+A watch-point stops the target when a particular memory location is read or
+written. (Another name for them is "data breakpoints").
+
+Example of Placing Watch-point:
+1.Bring the Memory view to the front and type address in the Address field.
+2.Right-click on the first word and choose Toggle Watch-point from the context
+menu.
+3.Add Watch-point dialog opens:
+   Choose WRITE or ACCESS as the Access Type and click OK.
+4.You can now see the watch point in the Memory view and the Breakpoints view.
+5.Click the Continue button.
+
+Hardware Breakpoints:
+
+Unlike SW breakpoints,We Can Place HW Breakpoints in ROM/Flash.
+
+Placing HW Breakpoints:
+1.You can also right-click on a function in the Outline or Functions views and
+  choose the Toggle Hardware Breakpoint menu item.
+2.There is a list of the current breakpoints in the Breakpoints view.
+3.Click the Continue button.
+
+##############################################################################
+        Connecting to Multi-cores using DSTREAM
+##############################################################################
+
+SMP is an acronym for Symmetric Multi Processing. SMP is ARM technology
+built-in to the Zynq to facilitate the two cores running together.
+Creating a SMP Debug Configuration (DC) for DSTREAM:
+We will create a debug configuration to connect to both cores at the same
+time. We will be able to start and stop the CPUs together.
+1. Connect a DSTREAM to your PC with a USB or Ethernet cable to a powered
+   target running Linux.
+2. Select Run/Debug Configurations.
+3. Select the Platform, Project type and Debug operation entries.
+4. For Connections: select Browse and Highlight the adapter (USB/Ethernet) of your choice and click on OK.
+5. Click on the Debugger tab to open its pane.
+6. Under Run Control, select Connect Only.
+7. Click on the Apply button. If successful the Debug icon will be highlighted. If not, the reason will be
+   displayed at the top of the window.
+8. Select close. One DC does both cores.
+9. In the Debug Control pane, highlight the DC you just created and connect to the target.
+10. Note both cores are connected and both are stopped.
+11. Select the Continue icon.
+    Select Interrupt.
+12. Note both processors start and stop. When stopped, as you click on core 0 and core 1, the
+    perspectives of various windows will change.
+13. Disconnect from the target
+
+
+###########################################################################
+                   Working On QEMU - Getting Started
+###########################################################################
+
+QEMU is a generic and open source machine emulator and virtualizer.
+
+When used as a machine emulator, QEMU can run OSes and programs made for one
+machine (e.g. an ARM board) on a different machine (e.g. your own PC). By using
+dynamic translation, it achieves very good performance.
+
+We have created a virtual platform for the Shikhara FPGA board with a few
+basic ARM peripherals readily available within the Qemu source code.
+
+Kindly note the following steps to install and run Qemu.
+
+Installation:
+------------
+
+1. CVS checkout Shikhara_FPGA_QEMU_virtual_platform
+2. mkdir qemu-install
+3. mkdir qemu-build && cd qemu-build
+4. run the following   ../Shikhara_FPGA_QEMU_virtual_platform/configure --prefix=$(readlink -f `pwd`/../qemu-install) --target-list=arm-softmmu --enable-vnc
+5. now compile the src using make -j`getconf _NPROCESSORS_ONLN`
+6. make install
+7. in case you need to call qemu-system-arm at a different location "export
+PATH="$(readlink -f `pwd`/../qemu-install/bin):$PATH""
+8. run qemu-system-arm -M ? for list of supported machines
+
+
+Usage:
+-----
+
+1. for the convenience of the user the QEMU Shikhara FPGA model is installed on the arm11 PC (IP 192.168.200.183)
+2. to use the model request for a User ID on arm11 PC
+3. add the following alias to the .bashrc
+        alias shikhara_fpga_qemu='/home/arm11/qemu/qemu-linaro-install/bin/qemu-system-arm -M anusoc_fpga-a9 -m 320M -kernel'
+4. run the image to be tested as following
+        #BASH#$ shikhara_fpga_qemu <image to be tested>
+5. this will launch a VNC server on 192.168.200.183:5900, access using any client to find qemu monitor and serial console.
+6. switch to serial console by running ctrl+alt+3 ,alternatively serial console may be launched by appending --serial stdio to the run command
+        #BASH#$ shikhara_fpga_qemu <image to be tested> --serial stdio
+
+U-boot Memory Map
+-----------------
+                                        U-boot RAM Layout
+
+         _______________                |---------------|0x3FFFFFFF
+FC000000|               |               |               |
+        |    UBOOT      |               |               |
+        |               |               |               |
+        |---------------|               |               |
+        |               |               |               |
+        |---------------|               |---------------|
+        |               |               |               |
+        |               |               | Text Section  |
+        |               |  |----------->|---------------|0x3ff79000
+        |               |  |            |               |
+        |               |  |            | Malloc Area   |
+        |---------------|  |            |               |
+        |               |  |            |---------------|0x3fb69000(malloc_start)
+        |               |  |            |               |
+        |               |  |            | Global Data   |
+        |               |  |            |---------------|0x3fb68f64(gd_t)
+        |               |  |            |               |
+        |_______________|  |            |  Stack        |
+                           |            |---------------|0x3fb68f58(sp)
+                           |            |               |
+        Modified U-boot    |            |               |
+        RAM Layout         |            |               |
+         _______________   |            |               |
+        |               |  |            |_______________|
+        |               |  |
+        |               |  |
+        |               |  |
+        |               |  |
+        |---------------|  |
+        |               |--|
+        | Text section  |
+        |---------------|0x04000000
+        |               |
+        |               |
+        |               |
+        |_______________|0x00000000
+
+
+################################################################################
+                Using Qemu for Linux kernel Development
+################################################################################
+
+Please refer section "Working On QEMU - Getting Started" to install and setup
+Qemu for shikhara.
+
+the following information is assuming that Qemu is UP and RUNNING.
+
+Qemu is being used as a complete System emulator that replicates the shikhara
+FPGA boards and its various memory maps.
+
+Kindly run the following command to know the supported machines list.
+
+        <path_to_qemu_installation>/bin/qemu-system-arm -M ?
+
+The following machines have been added,
+
+shikhara-v7-a9 - virtual board with Shikhara zynq memory map and xilinx
+                                        default zynq devices, ram size of 320M starting at 0x40000000
+shikhara-zynq-a9 - virtual board with Shikhara zynq memory map and xilinx
+                                        default zynq devices, ram size of 512M starting at 0x0
+anusoc_fpga-a9 - virtual board with only Shikhara IP's based on coretile memory map
+
+The above machines have to be passed to Qemu via -M flag.
+
+the following flags are to be passed to the qemu binary for full functionality.
+
+-M      - the Machine to be emulated
+-m  - amount of memory to be emulated
+-kernel - the binary that will work on the emulated board.
+-serial - these are to be initalizes to stdio or NULL based on the number of
+                        serial device instances.
+-initrd - the location of the roofs/initrd/ramdisk
+-append - kernel cmdline that is usually passed on by bootloader.
+-dtb - the path to the device tree. 
+
+optionally the following flags may be needed if the respective device is needed.
+
+-sd - path to the SD card image, SD card creation is decribed under " Working On
+                 QEMU - Getting Started".
+-drive - this is a slightly generic means of exposing drives to Qemu,
+                        the following sub-flags are needed to engage thes drives.
+                (if= <interface type> , MTD, SCSI etc)
+                (cache= <type of caching>, writeback or writethrough)
+                (file= the backing file to act as a device to the board)
+
+e.g qemu-shikhara -M shikhara-zynq-a9 -kernel arch/arm/boot/zImage -serial null -serial null -serial stdio   -initrd /firma/vivek/GIT_SHIK/ramdisk.image.gz -append "console=ttyPS0,115200 root=/dev/ram rw initrd=/init earlyprintk" -dtb zynq-shikhara.dtb  -m 320M -drive if=mtd,cache=writeback,file=../../firmware/Shikhara_ANUSOC/tot/linux-3.5.0_14.3_xilinx/flash1.img
+
+
+
+#########################################################################################################################
+Steps to Run qemu on MOSDROID
+#########################################################################################################################
+
+I.For linux PC:
+
+	1.Login to mosdroid using  ssh -X    command
+	ex: ssh -X nagesh@192.168.200.203
+	2.Add toolchain path to bashrc file like 
+		export PATH=$PATH:/opt/shikhara_toolchains/gcc-arm-none-eabi-4_7-2012q4/bin/
+	3.Add alias of qemu-system-arm to bashrc file using
+		alias qemu-system-arm='/firma/vivek/GIT_SHIK/qemu-linaro-install/bin/qemu-system-arm'
+	4.souce bashrc file using  source ~/.bashrc  command
+	5.compile u-boot code using u-boot compilation steps in U-boot section
+	6.Run the u-boot code by using following command
+	qemu-system-arm -M anusoc_fpga-a9 -m 320M -kernel u-boot -serial stdio
+
+II.For Windows PC:
+	
+	1.get xming software from \\192.168.200.231\soc\Tools\Remote_Access_tools\X11_on_windows\Xming-6-9-0-31-setup.exe
+	2.Install "xming" software  on pc.
+	3.After Installing xming Run the application XLanuch
+	4.It shows Display setings window in this select multiple windows and click on  next.
+	5.It shows Session type window in this select start a program and click on next and next and finish.
+	6.open putty and logon to mosdroid.
+	7.Add toolchain path to bashrc file like
+                export PATH=$PATH:/opt/shikhara_toolchains/gcc-arm-none-eabi-4_7-2012q4/bin/
+        8.Add alias of qemu-system-arm to bashrc file using
+                alias qemu-system-arm='/firma/vivek/GIT_SHIK/qemu-linaro-install/bin/qemu-system-arm'
+        9.souce bashrc file using  source ~/.bashrc  command
+	10.compile u-boot code using u-boot compilation steps in U-boot section
+	11.Run the u-boot code by using following command
+        qemu-system-arm -M anusoc_fpga-a9 -m 320M -kernel u-boot -serial stdio
+
+
+Note:   1.In absense of xming use -nographic flag to get serioal I/Os to console
+	2.If U-boot is compiled for  zynqbased fpga  then use machine type as shikhara_zynq-a9 and use -m 512M instead of 320M
+	  For zynqbased fpga with ddr use machine type as xilinx-shikhara-a9 
+	  For coretilebased fpga use machine as anusoc_fpga-a9	
+	3.ASIC based machine will release soon.
+		
+III. steps to debug u-boot on qemu 
+
+	1.  give this command in one terminal
+		qemu-system-arm -M anusoc_fpga-a9 -m 320M -kernel u-boot -serial stdio -s -S
+	2. In other terminal give command as
+		arm-none-eabi-gdbtui u-boot
+	3. To connecet target type command as 
+		target remote:1234
+	4. Now gdb is ready to debug u-boot	
+
+
+####################################################
+ pheripherals which are validate with Qemu
+#####################################################
+	1.RTC: 		: Fot RTC test give command as date
+	2.GIC(DT) 	: For DT 0 of counter 0 give command as sysconfig 0 0
+			: For DT 0 of counter 1 give command as sysconfig 0 1
+			: For DT 1 of counter 0 give command as sysconfig 1 0
+			: For DT 1 of counter 1 give command as sysconfig 1 1
+	3.LCD		: To test LCD compilu u-boot by Enabling the flags CONFIG_SHIKHARA_DISPLAYS,CONFIG_PL111 and LCD_BPP as 
+			  LCD_COLOR8
+			  To test LCD give commans as
+			   confino
+			   set stdout lcd
+			   lcd fill
+			   showflyer
+	4.KMI		: To test KMI give commands as 
+			  coninfo
+			  kmi_start
+			  kbd_start
+			  coninfo
+			  apkybd
+			  press ctrl+alt+3 and type sendkey n 
+
+	5.Mouse test    : To test mouse build qemu with mouse support by enableing pl050_mouse insted of keyboard 
+			  in qemu source directory /Shikhara_FPGA_QEMU_virtual_platform/hw/arm/shikhara_v7.c file. 
+			  and use command as
+			  apmouse
+			  press ctrl+alt+3 and  use command  mouse_move 12 14
+			  To exit qemu window  use command mouse_button 2   
+	
+	6.UART	        : Console output prints will come after booting u-boot.and give command as printenv to know about uart 
+			  configuration.
+   
+	7a.SPI 	        : To test SPI define CONFIG_ENV_IS_NOWHERE  and undefine CONFIG_ENV_IS_IN_SPI_FLASH in anusoc.h and compile
+                          U-boot.
+			  create flash.img using following command
+			  dd of=flash.img if=/dev/zero bs=512 count=32k
+			  run uboot with following command  
+		qemu-system-arm -M shikhara-v7-a9 -m 320M -kernel u-boot -serial stdio -drive if=mtd,cache=writeback,file=flash.img
+			  after running give commands as 
+			  sf probe 0 0 0
+			  md 0x40000000 0x10
+			  mw 0x40000000 0x1234 0x10
+			  md 0x40000000 0x10
+			  sf erase 0x0 0x400000
+			  sf write 0x40000000 0x0 0x10
+			  md 0x41000000 0x10
+			  mw 0x41000000 0x1234 0x10
+			  sf read 0x41000000 0x0 0x10
+			  md 0x41000000
+		
+	7b.SPI_IMAGE 	:To test image on LCD compile u-boot with LCD support.After createing flash.img file.
+			 copy image to flash.img using 
+			 dd of=flash.img if=<file_name>.bmp conv=notrunc bs=512 
+			 run u-boot with flash support
+		qemu-system-arm -M shikhara-v7-a9 -m 320M -kernel u-boot -serial stdio -drive if=mtd,cache=writeback,file=flash.img
+ 			 use following commands to test image
+			 sf probe
+			 sf probe 0x50000000 0x00 0x4b000
+			 bmp info 0x50000000
+			 bmp display 0x50000000 0 0			
+			 use ctrl+alt+2	for output.
+	
+     	8.DMA_M2M       :To test DMA Memory to Memory Transfer use command as dma_m2m 
+
+
+make ARCH=arm CROSS_COMPILE=arm-none-eabi- bl0_spl/bl0.bin
+						

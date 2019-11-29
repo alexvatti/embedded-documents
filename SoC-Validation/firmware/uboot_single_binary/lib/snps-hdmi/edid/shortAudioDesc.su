@@ -1,0 +1,17 @@
+shortAudioDesc.c:13:6:shortAudioDesc_Reset	0	static
+shortAudioDesc.c:21:5:shortAudioDesc_Parse	16	static
+shortAudioDesc.c:36:4:shortAudioDesc_GetByte3	0	static
+shortAudioDesc.c:41:4:shortAudioDesc_GetFormatCode	0	static
+shortAudioDesc.c:46:4:shortAudioDesc_GetMaxChannels	0	static
+shortAudioDesc.c:51:4:shortAudioDesc_GetSampleRates	0	static
+shortAudioDesc.c:56:5:shortAudioDesc_Support32k	8	static
+shortAudioDesc.c:61:5:shortAudioDesc_Support44k1	8	static
+shortAudioDesc.c:66:5:shortAudioDesc_Support48k	8	static
+shortAudioDesc.c:71:5:shortAudioDesc_Support88k2	8	static
+shortAudioDesc.c:76:5:shortAudioDesc_Support96k	8	static
+shortAudioDesc.c:81:5:shortAudioDesc_Support176k4	8	static
+shortAudioDesc.c:86:5:shortAudioDesc_Support192k	8	static
+shortAudioDesc.c:91:4:shortAudioDesc_GetMaxBitRate	8	static
+shortAudioDesc.c:101:5:shortAudioDesc_Support16bit	8	static
+shortAudioDesc.c:111:5:shortAudioDesc_Support20bit	8	static
+shortAudioDesc.c:121:5:shortAudioDesc_Support24bit	8	static

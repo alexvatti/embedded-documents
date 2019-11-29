@@ -1,0 +1,2 @@
+shikhara_fb.c:45:6:lcd_enable	0	static
+shikhara_fb.c:85:6:hdmi_init	8	static

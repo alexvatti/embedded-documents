@@ -1,0 +1,352 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+//	showstalls
+//	vec16	Scalars0 = vr00, Scalars1 = vr01
+
+	metaware
+    
+
+    include "../ARC/SIMD_ABI.ii"    
+
+	
+	
+	macrotable	MP4DeQuant,8
+	
+#include "ArcMPC.h"
+#include "ArcMP4SDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"    
+    
+//#include "../MPEG4/ArcIDCT_MPA.h"
+
+import Idct, 0, IDCTBlock    
+//------------------------------------------------------------------------------
+// Name:          MP4DeQuant
+// Purpose:       provide the dequantisation step for the 6 blocks of an MPEG4 MB 
+// Arguments:     none
+// Return Value:  void
+//------------------------------------------------------------------------------
+      
+func.f		MP4DeQuant
+
+
+	
+begin
+p16 blkInOffset  = i0     // i0
+
+p16 Intra        = i2     // i2 1 or 0
+vec16   row0 = vr02
+vec16   row1 = vr03
+vec16   row2 = vr04
+vec16   row3 = vr05
+vec16   row4 = vr06
+vec16   row5 = vr07
+vec16   row6 = vr08
+vec16   row7 = vr09
+vec16   scale0,scale1,scale2,scale3,scale4,scale5,scale6,scale7
+vec16 	sign0,sign1,sign2,sign3,sign4,sign5,sign6,sign7
+
+
+
+p16     QuantVal
+vec16   QuantVec
+p16     temp = i10
+p16     cirPtr = i7
+s16     mode : Intra
+vec16   Inter
+p16     dcterm 
+p16     block_no
+p16     blockdouble
+s16     cbp : Intra
+p16     zero
+p16     hasAC 
+
+    regmap
+    
+    vmovw       'zero, 0
+    vmovw       'temp, 128 // offset for Inter scaling tables
+   
+    vld8w       'Intra,[CirBuf, MPO_MBCodingType]
+    vand        'Intra, 'Intra, MBCT_MPEG4_INTRA
+    vld16       'cbp, [CirBuf,  MPO_NonZeroCoeffLuma] // load cbp
+    vsnew.4       'Intra,VZERO
+    vmovw.s     'temp,  0   // offset for INtra scaling tables
+    vld8w       'QuantVal, [CirBuf, MPO_QuantValue]
+    vmivw.255    QuantVec, QuantVal
+       
+    vim         cirPtr, temp, SDMOF_mpeg4_dct_dequant_scaling_table   // inter
+
+     // load quantization coefficients here as they are the same for all blocks
+    vld128      scale0, [cirPtr, 0x00]
+    vld128      scale1, [cirPtr, 0x10]
+    vld128      scale2, [cirPtr, 0x20]
+    vld128      scale3, [cirPtr, 0x30]
+    vld128      scale4, [cirPtr, 0x40]
+    vld128      scale5, [cirPtr, 0x50]
+    vld128      scale6, [cirPtr, 0x60]
+    vld128      scale7, [cirPtr, 0x70]
+    
+    // multiply by quant, to avoid this calculation for each of the 6 blocks
+    vmulw       scale0, scale0, QuantVec
+    vmulw       scale1, scale1, QuantVec
+    vmulw       scale2, scale2, QuantVec
+    vmulw       scale3, scale3, QuantVec
+    vmulw       scale4, scale4, QuantVec
+    vmulw       scale5, scale5, QuantVec
+    vmulw       scale6, scale6, QuantVec
+    vmulw       scale7, scale7, QuantVec   
+ 
+    vmovw      'block_no, 0
+
+label DeQuantLoop
+    move16       'blockdouble, 'block_no
+    vaddw        'blockdouble, 'blockdouble, 'blockdouble // needed for indexing short arrays
+
+  regmap
+//  now check if we need to dequant this block
+begin
+
+    move16       mode, block_no
+    vim          temp, zero, 2048              // temp = 1<<11
+    vlsrvw      'temp, 'temp, 'mode     // temp =  1<<(11-block_no)
+    vand        'temp, 'cbp, 'temp         // see if relevant bit of cbp is set
+    move16       hasAC, temp
+    vor         'temp, 'temp, 'Intra         // if cbp is set for this block or we have an Intra MB
+end    
+ // note that the Intra dc term has already been dequantised, but because of mismatch control, we still
+ // have to do this
+
+    // now we know we are either Intra mode or have AC coeffs (or both)
+
+    vim         cirPtr, blockdouble, SDMOF_mpeg4_diff_pixel_offset
+    vld16      'blkInOffset, [cirPtr, 0 ]
+    vim         cirPtr, CirBuf, MPO_PixelCoeffBuffer  
+    vaddw      'cirPtr, 'cirPtr, blkInOffset
+    
+    vld128      row0, [cirPtr,                    0  ] // load 8 shorts from input
+    vld128      row1, [cirPtr,  PCB_RESIDUAL_STRIDE  ] // load next 8 shorts from input
+    vld128      row2, [cirPtr,  PCB_RESIDUAL_STRIDE*2] // load next 8 shorts from input
+    vld128      row3, [cirPtr,  PCB_RESIDUAL_STRIDE*3] // load next 8 shorts from input
+    vld128      row4, [cirPtr,  PCB_RESIDUAL_STRIDE*4] // load next 8 shorts from input
+
+ // skip to end of loop if dequant not required
+ 
+    vjp!temp    .InterPredict // don't do anything if not INtra and no CBP
+    vld128      row5, [cirPtr,  PCB_RESIDUAL_STRIDE*5] // load next 8 shorts from input
+    vld128      row6, [cirPtr,  PCB_RESIDUAL_STRIDE*6] // load next 8 shorts from input
+    vld128      row7, [cirPtr,  PCB_RESIDUAL_STRIDE*7] // load next 8 shorts from input
+    
+    
+    vjp!hasAC    .MisMatch // no AC coeffs and Intra mode (otherwise we would have gone to SkipBlock)
+                          // so only need to do mismatch control
+    vnop
+    vmovw           Inter, 0, 255
+    move16          temp, Intra
+    
+    vjp.temp        .GoIntra  
+    vnop
+    vnop
+    vnop
+    
+    vjp         .dequant
+    vmovw.255      Inter, 1
+    vnop
+    vnop 
+
+    
+ label  GoIntra
+     vmovw.255       Inter, 0
+ // save dcterm - already dealt with
+    viv.1       dcterm, row0
+    vmovw.255   Inter, 0
+      
+ 
+ label  dequant   
+
+    // save sign of each element
+    vsignw      sign0, row0
+    vsignw      sign1, row1
+    vsignw      sign2, row2
+    vsignw      sign3, row3
+    vsignw      sign4, row4
+    vsignw      sign5, row5
+    vsignw      sign6, row6
+    vsignw      sign7, row7
+    
+    // make all coeffs positive
+ // abs(coeff)
+    vabsw       row0, row0
+    vabsw       row1, row1
+    vabsw       row2, row2
+    vabsw       row3, row3
+    vabsw       row4, row4
+    vabsw       row5, row5
+    vabsw       row6, row6
+    vabsw       row7, row7
+// mult by 2
+// 2*(abs(coeff))
+    vaddw       row0, row0, row0
+    vaddw       row1, row1, row1
+    vaddw       row2, row2, row2
+    vaddw       row3, row3, row3
+    vaddw       row4, row4, row4
+    vaddw       row5, row5, row5
+    vaddw       row6, row6, row6
+    vaddw       row7, row7, row7
+    
+ // add 1 if Inter
+ // 2*(abs(coeff)) + IsInter
+    vaddw      row0, row0, Inter
+    vaddw      row1, row1, Inter
+    vaddw      row2, row2, Inter
+    vaddw      row3, row3, Inter
+    vaddw      row4, row4, Inter
+    vaddw      row5, row5, Inter
+    vaddw      row6, row6, Inter
+    vaddw      row7, row7, Inter
+    
+// perform scaling and quantization on all coefficients 
+// (2*(abs(coeff)) + IsInter)*quant*matrix  
+    vmulw       row0, row0, scale0
+	vmulw 		row1, row1, scale1
+	vmulw 		row2, row2, scale2
+	vmulw 		row3, row3, scale3
+	vmulw 		row4, row4, scale4
+	vmulw 		row5, row5, scale5
+	vmulw 		row6, row6, scale6
+	vmulw 		row7, row7, scale7
+
+	
+// shift down by 4
+//(2*(abs(coeff)) + IsInter)*quant*matrix >>4
+    vasrw       row0, row0, 4
+    vasrw       row1, row1, 4
+    vasrw       row2, row2, 4
+    vasrw       row3, row3, 4
+    vasrw       row4, row4, 4
+    vasrw       row5, row5, 4
+    vasrw       row6, row6, 4
+    vasrw       row7, row7, 4
+	
+	// reapply sign
+    vmulw       row0, row0, sign0
+	vmulw		row1, row1, sign1
+	vmulw		row2, row2, sign2
+	vmulw		row3, row3, sign3
+	vmulw		row4, row4, sign4
+	vmulw		row5, row5, sign5
+	vmulw		row6, row6, sign6
+	vmulw		row7, row7, sign7
+	
+   // if Intra mode, put back the saved dc term
+    vseqw          Inter, 0 // Inter holds all 1 if Inter, all 0 if Intra
+    vmivw.s.1       row0,dcterm
+    
+label MisMatch
+  // mismatch control  using signs as working arrays
+    vaddw       sign0, row0, row1
+    vaddw       sign1, row2, row3
+    vaddw       sign2, row4, row5
+    vaddw       sign3, row6, row7
+    vaddw       sign4, sign0, sign1
+    vaddw       sign5, sign2, sign3
+    vaddw       sign4, sign4,sign5
+    vxsumw      sign5, sign4, 255 // every element contains sum of all coeffs
+    
+    vxor        sign6, sign6, sign6 // clear v15
+    
+    
+     
+    // now call IDCT for this block
+    vjl     VSTACK,.IDCTBlock
+    vmovw       sign6,     1,   128 // put a 1 in lane 7
+    vbic        sign0, sign6, sign5 // if lowest bit of sum not set
+    
+    vxor         row7,  row7, sign0 // twiddle lowest bit of highest freq coeff
+    
+    vjp.Intra   .SaveIntra
+    
+label InterPredict    
+    // calculate the address of the predicted data
+    vim          temp, blockdouble, SDMOF_mpeg4_pred_pixel_offset // calc offset of lookup table
+    vld16       'blkInOffset, [temp, 0 ] // read offset into MP0_PixelCoeffBuffer
+    vim          temp, CirBuf, MPO_PixelCoeffBuffer  
+    vaddw       'temp, 'temp, blkInOffset
+    // inter need to add prediction
+    //load predicted data
+    vld64w              sign0, [temp, 0*16]
+    vld64w              sign1, [temp, 1*16]
+    vld64w              sign2, [temp, 2*16]
+    vld64w              sign3, [temp, 3*16]
+    vld64w              sign4, [temp, 4*16]
+    vld64w              sign5, [temp, 5*16]
+    vld64w              sign6, [temp, 6*16]
+    vld64w              sign7, [temp, 7*16]    
+    //add prediction to inverse DCT
+    vaddw               row0, row0, sign0
+    vaddw               row1, row1, sign1
+    vaddw               row2, row2, sign2
+    vaddw               row3, row3, sign3
+    vaddw               row4, row4, sign4
+    vaddw               row5, row5, sign5
+    vaddw               row6, row6, sign6
+    vaddw               row7, row7, sign7    
+    
+label SaveIntra
+    // set up pointer for saving data
+    vim          cirPtr, blockdouble, SDMOF_mpeg4_final_pixel_offset // calc offset of lookup table
+    vld16       'blkInOffset, [cirPtr, 0 ] // read offset into MP0_PixelCoeffBuffer
+    vim         cirPtr, CirBuf, MPO_PixelCoeffBuffer  
+    vaddw       'cirPtr, 'cirPtr, blkInOffset 
+// save to byte and saturate
+    vasrpwb             row0, row0, 0
+    vasrpwb             row1, row1, 0
+    vasrpwb             row2, row2, 0
+    vasrpwb             row3, row3, 0
+    vasrpwb             row4, row4, 0
+    vasrpwb             row5, row5, 0
+    vasrpwb             row6, row6, 0
+    vasrpwb             row7, row7, 0    
+    
+    // store quantized dct coefficients in memory 
+    vst64       row0, [cirPtr,    0]
+    vst64       row1, [cirPtr,   16]
+    vst64       row2, [cirPtr,   32]
+    vst64       row3, [cirPtr,   48]
+    vst64       row4, [cirPtr,   64]
+    vst64       row5, [cirPtr,   80]
+    vst64       row6, [cirPtr,   96]
+    vst64       row7, [cirPtr,  112]    
+       
+    
+
+
+label SkipBlock	
+    
+    vim block_no, block_no, 1
+    
+    // check to see if we have done all blocks
+    vim        temp, block_no, -6
+    
+    vjp.temp    .DeQuantLoop
+    vnop
+    vnop
+    vnop 
+	    
+	end
+endfunc		MP4Dequant

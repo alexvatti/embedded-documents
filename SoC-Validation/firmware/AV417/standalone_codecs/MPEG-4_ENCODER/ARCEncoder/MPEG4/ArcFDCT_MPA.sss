@@ -1,0 +1,680 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+	showstalls
+//	vec16	Scalars0 = vr00, Scalars1 = vr01
+
+	metaware
+    
+
+    include "../ARC/SIMD_ABI.ii"    
+
+	
+	
+	macrotable	Fdct,8
+	
+#include "ArcMPC.h"
+#include "ArcMP4SDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"    
+    
+    
+    
+func.f		FDCT
+
+    // Params
+    p16     standard = i3         // i3 0 = MPEG4; 0xffff = H263
+    // end Params
+begin  
+p16     blkOutOffset = i0     // i1
+p16     rounding = i2         // i2 rounding or not
+p16     block_no = i7        // i7
+
+p16     Intra = i8       
+vec16	v1,v2,v3,v4,v5,v6,v7,v8,v9
+vec16   scale1, scale2, scale3, scale4, scale5, scale6, scale7, scale8
+vec16   MaxCoeff
+
+vec16	auxreg
+p16     temp  = i9
+p16     cirPtr = i10
+
+p16     ptr  = i12
+s16     blockdouble : cirPtr
+vec16   normround
+vec16   vecadd // needs to be setup with addresses of labels
+p16     QuantVal = i13
+p16     dcpredict = i14
+
+regmap
+// set up case statement addresses at the end for dc prediction
+    vmovw'0      vecadd, .case0
+    vmovw'1      vecadd, .case1
+    vmovw'2      vecadd, .case2
+    vmovw'3      vecadd, .case3
+    vmovw'4      vecadd, .case4
+    vmovw'5      vecadd, .case5
+    vst16        VZERO, [CirBuf, MPO_NonZeroCoeffLuma] // clear CBP
+    // set saturation limits
+	vmovw		        MaxCoeff, 2047,255	// MPEG4 limits
+	vmovw.standard 		MaxCoeff, 127   // H263 limits 
+    // set Intra flag
+    vld8w       'Intra,[CirBuf, MPO_MBCodingType]
+    vand        'Intra, 'Intra, MBCT_MPEG4_INTRA
+ begin
+ 
+    p16         dummy 
+    move16      dummy, Intra 
+    
+    vsnew       'dummy,VZERO
+    vmovw.s     'dummy,  -128   // offset for Intra scaling tables
+
+    vim          ptr, dummy, SDMOF_mpeg4_dct_quant_scaling_table + 128
+     // load quantization coefficients  - good for all blocks
+    vld128      scale1, [ptr, 0x00]
+    vld128      scale2, [ptr, 0x10]
+    vld128      scale3, [ptr, 0x20]
+    vld128      scale4, [ptr, 0x30]
+    vld128      scale5, [ptr, 0x40]
+    vld128      scale6, [ptr, 0x50]
+    vld128      scale7, [ptr, 0x60]
+    vld128      scale8, [ptr, 0x70]
+ end   
+    
+    
+ begin
+  // this section sets rounding for the whole MB depending on whether
+  // mpeg4 : Intra = rounding true; Inter = rounding false
+  // h263  : Even quant = rounding true, Odd quant = rouding false
+  
+s16     alg : QuantVal  // algorithm type (mpeg4 or H263)
+s16     even : QuantVal // whether quantval is even
+s16     round: QuantVal // whether rounding should be done
+s16     temp: QuantVal  
+
+regmap
+    vjp!Intra    .endround
+    vld8w       'QuantVal, [CirBuf, MPO_QuantValue]// needed later
+    vmovw       'round, 0
+    vmovw       'dcpredict, 0
+
+    vand        'even, 'QuantVal, 0x1 // check to see if even
+    vseqw       'even, 0            // sticky set if quant is even
+    move16       alg, standard
+    vsnew.s     'alg,0          // sticky set if quant even and H263 and Intra
+    vmovw.s     'round, 1       // set round if sticky
+    
+    move16       even, Intra
+    vseqw       'even, 1        // set sticky if Intra
+    vseqw.s     'alg, 0         // set sticky if Intra and Mpeg4
+    vmovw.s     'round, 1       // set round if sticky
+    vmovw       'temp, 0
+    vmovw.s     'temp,1
+    move16       dcpredict,temp   // we also need to do dc predict in this case
+ label endround   
+    move16       rounding, round
+ end   
+
+
+// if inter, we need to set RoundingValue here to zero, for Intra, it's 1<<14	
+    vmovw.1      normround, 16384
+
+// set rounding - needed for mults in transform, and alg specific rounding
+// for quant step 
+    vmovw       'ptr, 0
+    vmovw.1      auxreg, 0
+    vaddw.rounding      auxreg,auxreg, normround 
+  
+    vmovw       'block_no, 0
+
+  // main block loop starts here
+ label MainLoop      
+    vjp!Intra    .loadInter
+    move16       blockdouble, block_no
+    vaddw        blockdouble, blockdouble, blockdouble // needed for indexing short arrays
+    // work out the offset of the data for this block
+    vmovw       'temp, 0    
+    vim          cirPtr, temp, SDMOF_mpeg4_raw_pixel_offset
+    vaddw       'cirPtr, 'cirPtr, blockdouble 
+    vld16       'blkOutOffset, [cirPtr, 0 ]
+    // set the location of the actual pixels
+    vim          cirPtr, CirBuf, MPO_PixelCoeffBuffer  
+    vaddw       'cirPtr, 'cirPtr, blkOutOffset
+
+// first load data into the registers
+	vld64w 		 v1, [cirPtr,                   0  ] // load 8 bytes from input
+	vld64w		 v2, [cirPtr,  PCB_CURRENT_STRIDE  ]	// load next 8 bytes from input
+	vld64w		 v3, [cirPtr,  PCB_CURRENT_STRIDE*2]	// load next 8 bytes from input
+	vld64w		 v4, [cirPtr,  PCB_CURRENT_STRIDE*3]	// load next 8 bytes from input
+	vld64w		 v5, [cirPtr,  PCB_CURRENT_STRIDE*4]	// load next 8 bytes from input
+	vld64w		 v6, [cirPtr,  PCB_CURRENT_STRIDE*5]	// load next 8 bytes from input
+	vld64w		 v7, [cirPtr,  PCB_CURRENT_STRIDE*6]	// load next 8 bytes from input
+	vld64w		 v8, [cirPtr,  PCB_CURRENT_STRIDE*7]	// load next 8 bytes from input
+   
+// now set up output pointer
+    vmovw       'temp, 0    
+
+    vjp         .transform
+    vim          cirPtr, temp, SDMOF_mpeg4_diff_pixel_offset
+    vaddw       'cirPtr, 'cirPtr, blockdouble 
+    vld16       'blkOutOffset, [cirPtr, 0 ]
+label loadInter
+
+    // work out the offset of the data for this block
+    vmovw       'temp, 0    
+    vim          cirPtr, temp, SDMOF_mpeg4_diff_pixel_offset
+    vaddw       'cirPtr, 'cirPtr, blockdouble 
+    vld16       'blkOutOffset, [cirPtr, 0 ]
+
+    vim          cirPtr, CirBuf, MPO_PixelCoeffBuffer  
+    vaddw       'cirPtr, 'cirPtr, blkOutOffset
+ 
+    vld128       v1, [cirPtr,                    0  ] // load 8 shorts from input
+    vld128       v2, [cirPtr,  PCB_RESIDUAL_STRIDE  ] // load next 8 shorts from input
+    vld128       v3, [cirPtr,  PCB_RESIDUAL_STRIDE*2] // load next 8 shorts from input
+    vld128       v4, [cirPtr,  PCB_RESIDUAL_STRIDE*3] // load next 8 shorts from input
+    vld128       v5, [cirPtr,  PCB_RESIDUAL_STRIDE*4] // load next 8 shorts from input
+    vld128       v6, [cirPtr,  PCB_RESIDUAL_STRIDE*5] // load next 8 shorts from input
+    vld128       v7, [cirPtr,  PCB_RESIDUAL_STRIDE*6] // load next 8 shorts from input
+    vld128       v8, [cirPtr,  PCB_RESIDUAL_STRIDE*7] // load next 8 shorts from input
+
+   // move16      blkOutOffset, blkInOffset
+label transform
+begin
+// this section performs the AAN forward DCT with scaling
+vec16   v10,v11,v12,v13,v14,v15,v24 // working vecs
+
+s16     alg : i0
+p16     DCterm 
+s16     Quant2 : QuantVal
+
+regmap
+    vmovw       'ptr, 0
+    vrput       normround, [ptr,5] // set normal rounding
+    move16      alg, standard
+// now transpose the matrix
+	vexch1  	v1,v2		// exchange lanes 7,5,3,1 with 6,4,2,0
+	vexch1  	v3,v4		// exchange lanes 7,5,3,1 with 6,4,2,0
+	vexch1  	v5,v6		// exchange lanes 7,5,3,1 with 6,4,2,0
+	vexch1  	v7,v8		// exchange lanes 7,5,3,1 with 6,4,2,0
+	vexch2  	v1,v3		// exchange lanes 7,6,3,2 with 5,4,1,0
+	vexch2  	v2,v4		// exchange lanes 7,6,3,2 with 5,4,1,0
+	vexch2  	v5,v7		// exchange lanes 7,6,3,2 with 5,4,1,0	
+	vexch2  	v6,v8		// exchange lanes 7,6,3,2 with 5,4,1,0
+	vexch4  	v1,v5		// exchange lanes 7,6,5,4 with 3,2,1,0
+	vexch4  	v2,v6		// exchange lanes 7,6,5,4 with 3,2,1,0
+	vexch4  	v3,v7		// exchange lanes 7,6,5,4 with 3,2,1,0
+   	vexch4  	v4,v8		// exchange lanes 7,6,5,4 with 3,2,1,0
+   	
+  // Perform a 1-D FDCT transform on eight rows simultaneously  	
+
+
+   	vaddsuw 	v2, v7
+   	vaddsuw 	v1, v8
+   	vaddsuw 	v3, v6
+   	vaddsuw 	v4, v5
+   	vaddw   	v9, v7, v8
+   	vaddw   	v7, v6, v7
+   	vaddsuw 	v2, v3
+   	vaddsuw 	v1, v4
+   	vbmulfw 	v7, v7, 23170
+   	vaddw   	v6, v5, v6
+   	vaddw   	v3, v3, v4
+   	vsubw   	v5, v6, v9
+   	vaddw   	v9, v9, v9
+   	vaddsuw 	v8, v7
+   	vbmulfw 	v3, v3, 23170
+   	vbmulfw 	v5, v5, 12540
+   	vbmulfw 	v6, v6, 17734
+   	vbmulfw 	v9, v9, 21407
+   	vaddsuw 	v4, v3
+   	vaddw   	v6, v6, v5
+   	vaddw   	v9, v9, v5
+   	vaddsuw 	v7, v6
+   	vaddsuw 	v8, v9
+   	vaddsuw 	v1, v2
+   	
+      // Transpose the 8x8 matrix in-place 
+	vexch1 		v4, v6
+	vexch1 		v3, v9
+	vexch1 		v1, v8
+	vexch1 		v2, v7
+	vexch2 		v1, v4 
+	vexch2 		v8, v6
+	vexch2 		v2, v3
+	vexch2 		v7, v9
+	vexch4 		v1, v2 
+	vexch4 		v4, v3
+	vexch4 		v8, v7
+	vexch4 		v6, v9
+
+	   // perform a 1-d fdct transform on eight rows simultaneously 
+	vaddsuw 	v4, v7 
+	vaddsuw 	v1, v9
+	vaddsuw 	v8, v3
+	vaddsuw 	v6, v2
+	vaddw		v5, v3, v9
+	vaddw		v3, v7, v3
+	vaddsuw 	v8, v4
+	vaddsuw 	v1, v6
+	vbmulfw		v3, v3, 23170
+	vaddw		v7, v2, v7
+	vaddw		v4, v4, v6
+	vsubw		v2, v7, v5
+	vaddw		v5, v5, v5
+	vaddsuw 	v1, v8
+	vaddsuw 	v9, v3
+	vbmulfw 	v4, v4, 23170
+	vbmulfw 	v2, v2, 12540
+	vbmulfw 	v7, v7, 17734
+	vbmulfw 	v5, v5, 21407
+	vaddsuw 	v6, v4
+	vaddw		v7, v7, v2
+	vaddw		v5, v5, v2
+	vaddsuw 	v3, v7
+	vaddsuw 	v9, v5
+
+    // set rounding for quantisation
+
+    vrput       auxreg, [ptr,5]      
+ 
+    
+    vseqw       'Intra, 1          // set sticky if Intra
+    vseqw.s     'alg,0      // 0xffff means H263, 0 is mpeg4, so sticky if intra and MPEG4
+    
+
+    vaddw       'Quant2, 'QuantVal, 'QuantVal // double it to get byte offset
+    s16 block : ptr
+    move16      block, block_no
+    vsubw.f     'block, 'block, 4
+    
+      
+    move16      ptr, Quant2
+    vim         ptr,    ptr, SDMOF_mpeg4_aan_luma_dc_scaler
+
+    vaddw.GE    'ptr, 'ptr, 64 // offset for chroma_dc_scalar
+    
+    vld16       'DCterm, [ptr, 0] // load dc_scaler
+    vmivw.s.1   scale1, DCterm // replace DC scaling value only if Intra and MPEG4
+     
+	// save sign of each element
+	vsignw		 v2, v1
+	vsignw		v10, v9
+	vsignw 		v11, v6
+	vsignw		v12, v7
+	vsignw		v13, v8
+	vsignw		v14, v3
+	vsignw		v15, v4
+	vsignw		v24, v5
+	
+	// make all coeffs positive
+	vabsw		v1, v1
+	vabsw		v9, v9
+	vabsw		v6, v6
+	vabsw		v7, v7
+	vabsw		v8, v8
+	vabsw		v3, v3
+	vabsw 		v4, v4
+	vabsw		v5, v5
+
+
+	// perform scaling and quantization on all coefficients 
+	vmulfw 		v1, v1,  scale1
+	vmulfw 		v9, v9,  scale2
+	vmulfw 		v6, v6,  scale3
+	vmulfw 		v7, v7,  scale4
+	vmulfw 		v8, v8,  scale5
+	vmulfw 		v3, v3,  scale6
+	vmulfw 		v4, v4,  scale7
+	vmulfw 		v5, v5,  scale8
+	
+    
+    vseqw       'Intra, 1          // set sticky if Intra
+    vsnew.s     'alg,0      // 0xffff means H263, 0 is mpeg4, so sticky if intra and H263
+
+    viv.s.1     DCterm, v1   // H263 DC term is subject to limits of 1, 254
+
+    vasrrw     'DCterm, 'DCterm, 3 // shift down 3 with rounding (divide by 8)
+    vminw     'DCterm, 'DCterm, 254
+    vmaxw     'DCterm, 'DCterm, 1
+	// saturate to limits whilst still positive and save looking at mins
+	vminw		v1, v1, MaxCoeff // saturate at MaxCoeff
+	vminw		v9, v9, MaxCoeff 
+	vminw		v6, v6, MaxCoeff 
+	vminw		v7, v7, MaxCoeff 
+	vminw		v8, v8, MaxCoeff 
+	vminw		v3, v3, MaxCoeff 
+	vminw		v4, v4, MaxCoeff 
+	vminw		v5, v5, MaxCoeff 
+	
+    vmivw.s.1   v1, DCterm // put h263 intra dc term back
+	// reapply sign
+	vmulw		v1, v1,  v2
+	vmulw		v9, v9, v10
+	vmulw		v6, v6, v11
+	vmulw		v7, v7, v12
+	vmulw		v8, v8, v13
+	vmulw		v3, v3, v14
+	vmulw		v4, v4, v15
+	vmulw		v5, v5, v24
+	
+
+
+    vim         cirPtr, CirBuf, MPO_PixelCoeffBuffer 
+    vaddw       'cirPtr, 'cirPtr, blkOutOffset
+	   // store quantized dct coefficients in memory 
+	vst128 		v1, [cirPtr,    0]
+	vst128 		v9, [cirPtr,   32]
+	vst128 		v6, [cirPtr,   64]
+	vst128 		v7, [cirPtr,   96]
+	vst128 		v8, [cirPtr,  128]
+	vst128 		v3, [cirPtr,  160]
+	vst128 		v4, [cirPtr,  192]
+//	vst128 		v5, [cirPtr,  224] <-- moved below in jump delay slot
+end	
+begin
+ // mpeg4 DC prediction function
+ 
+    s16     leftDC // left
+    s16     aboveleftDC // above left
+    s16     aboveDC // above
+    //vec16   vecadd // needs to be setup with addresses of labels
+    p16     FixLeft  
+    s16     AboveLeftFlag : aboveleftDC  
+    s16     LeftFlag : leftDC             
+    s16     AboveFlag : aboveDC   
+    
+    s16     diffup : aboveDC
+    s16     diffleft : leftDC
+ 
+    s16     DCPred : i0   
+    s16     tempdiff  : diffleft 
+    vec32   workarea
+    s32     DCFwdScaler : k0
+    s16     DCScaler : DCPred
+  //  s16     Quant2 : FixLeft
+    s16     Quant3 : FixLeft
+    s16     chroma : block_no
+  
+  regmap
+// section to do mpeg4 Intra DC prediction
+    vjp!dcpredict .endpredict // dcpredict was set when working out the rounding
+    vst128      v5, [cirPtr,  224]
+    // move16   Quant2,  QuantVal
+    move16   Quant3,  QuantVal
+    vmulw   'Quant3, 'Quant3, 3
+    
+  
+    vjpt         vecadd, block_no // jump to the right bit of code
+    vnop
+    vnop
+    vnop
+    
+label case0
+    vim          FixLeft, FixBuf, -MPO_SIZE_OF_FIXED_ENTRY
+    // load neighbour flags
+    vld8w        LeftFlag, [CirBuf, MPO_LeftMB]
+    vld8w        AboveFlag, [CirBuf, MPO_AboveMB]
+    vld8w        AboveLeftFlag, [CirBuf, MPO_AboveLeftMB]
+    // now check that the MBs are valid, same ID and Intra
+    vand        'LeftFlag'AboveLeftFlag'AboveFlag, 'LeftFlag'AboveLeftFlag'AboveFlag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+    vsnew       'LeftFlag'AboveLeftFlag'AboveFlag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+   // load the DC terms in the buffers
+    vld16        aboveleftDC,[FixLeft, MPO_Y_IntraPredDC_Coeff+6]
+    vld16        leftDC,[CirLeft, MPO_Y_IntraPredDC_Coeff+2]
+    
+    vjp         .predict
+    vld16        aboveDC,[FixBuf, MPO_Y_IntraPredDC_Coeff+4]
+    // overwrite the values with 1024 if sticky is set (i.e. not (valid, same id and intra))
+    
+    vmovw.s    'leftDC'aboveleftDC'aboveDC, 1024
+    
+    vim          FixLeft, QuantVal, SDMOF_mpeg4_luma_dc_scaler
+    
+label case1
+    vld16        leftDC,[CirBuf, MPO_Y_IntraPredDC_Coeff] // in same MB
+    
+    vld8w        AboveFlag, [CirBuf, MPO_AboveMB]
+    move16       AboveLeftFlag, AboveFlag
+    vand        'AboveLeftFlag'AboveFlag, 'AboveLeftFlag'AboveFlag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+
+    vld16        aboveleftDC,[FixBuf, MPO_Y_IntraPredDC_Coeff+4]
+    vld16        aboveDC,[FixBuf, MPO_Y_IntraPredDC_Coeff+6]
+      // now check that the MBs are valid, same ID and Intra
+    vand        'AboveLeftFlag'AboveFlag, 'AboveLeftFlag'AboveFlag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+   
+    vjp         .predict
+    vsnew       'AboveLeftFlag'AboveFlag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+    vmovw.s     'aboveleftDC'aboveDC, 1024 
+    vim          FixLeft, QuantVal, SDMOF_mpeg4_luma_dc_scaler   
+label case2
+    vld16        aboveDC,[CirBuf, MPO_Y_IntraPredDC_Coeff] // current MB
+    
+    vld8w        LeftFlag, [CirBuf, MPO_LeftMB]
+    move16       AboveLeftFlag, LeftFlag
+    
+    vld16        leftDC,[CirLeft, MPO_Y_IntraPredDC_Coeff+6]
+    vld16        aboveleftDC,[CirLeft, MPO_Y_IntraPredDC_Coeff+2]
+    
+   // now check that the MBs are valid, same ID and Intra
+    vand        'LeftFlag'AboveLeftFlag, 'LeftFlag'AboveLeftFlag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    vjp         .predict
+    vsnew       'LeftFlag'AboveLeftFlag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+    vmovw.s     'leftDC'aboveleftDC, 1024 
+    vim          FixLeft, QuantVal, SDMOF_mpeg4_luma_dc_scaler
+label case3
+    vld16        leftDC,[CirBuf, MPO_Y_IntraPredDC_Coeff+4]// all in current MB
+    vjp         .predict
+    vld16        aboveleftDC,[CirBuf, MPO_Y_IntraPredDC_Coeff]
+    vld16        aboveDC,[CirBuf, MPO_Y_IntraPredDC_Coeff+2]
+    vim          FixLeft, QuantVal, SDMOF_mpeg4_luma_dc_scaler
+label case4
+    vim          FixLeft, FixBuf, -MPO_SIZE_OF_FIXED_ENTRY
+    // load neighbour flags
+    vld8w        LeftFlag, [CirBuf, MPO_LeftMB]
+    vld8w        AboveFlag, [CirBuf, MPO_AboveMB]
+    vld8w        AboveLeftFlag, [CirBuf, MPO_AboveLeftMB]
+    // now check that the MBs are valid, same ID and Intra
+    vand        'LeftFlag'AboveLeftFlag'AboveFlag, 'LeftFlag'AboveLeftFlag'AboveFlag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+    vsnew       'LeftFlag'AboveLeftFlag'AboveFlag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+ 
+    vld16        leftDC,[CirLeft, MPO_UV_IntraPredDC_Coeff]
+    vld16        aboveleftDC,[FixLeft, MPO_UV_IntraPredDC_Coeff]
+    vld16        aboveDC,[FixBuf, MPO_UV_IntraPredDC_Coeff]
+
+    vjp         .predict
+    vmovw.s     'leftDC'aboveleftDC'aboveDC, 1024
+    
+    vim          FixLeft, QuantVal, SDMOF_mpeg4_chroma_dc_scaler
+     
+    vim          cirPtr, CirBuf, MPO_U_DC_CoeffStore 
+label case5    
+    vim          FixLeft, FixBuf, -MPO_SIZE_OF_FIXED_ENTRY
+    // load neighbour flags
+    vld8w        LeftFlag, [CirBuf, MPO_LeftMB]
+    vld8w        AboveFlag, [CirBuf, MPO_AboveMB]
+    vld8w        AboveLeftFlag, [CirBuf, MPO_AboveLeftMB]
+    // now check that the MBs are valid, same ID and Intra
+    vand        'LeftFlag'AboveLeftFlag'AboveFlag, 'LeftFlag'AboveLeftFlag'AboveFlag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+    vsnew       'LeftFlag'AboveLeftFlag'AboveFlag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+ 
+    vld16        leftDC,[CirLeft, MPO_UV_IntraPredDC_Coeff+2]    
+    vld16        aboveleftDC,[FixLeft, MPO_UV_IntraPredDC_Coeff+2]
+    vld16        aboveDC,[FixBuf, MPO_UV_IntraPredDC_Coeff+2]
+    
+    vmovw.s     'leftDC'aboveleftDC'aboveDC, 1024  // set to 1024 if not usable
+    
+    vim          FixLeft, QuantVal, SDMOF_mpeg4_chroma_dc_scaler
+        
+//    vim          cirPtr, CirBuf, MPO_V_DC_CoeffStore 
+    vim          cirPtr, CirBuf, MPO_U_DC_CoeffStore+2
+label predict
+    // having worked out A, B and C we can decide direction of prediction
+    // and actual value
+    regmap
+    move16       diffup, aboveleftDC
+    vdifw       'diffup, 'diffup, 'aboveDC  // abs(B - C)
+    move16       diffleft, aboveleftDC
+    vdifw       'diffleft, 'diffleft, 'leftDC // abs(B - A)
+    
+    move16       DCPred, aboveDC            // assume C
+    move16       tempdiff, diffup         
+    vlew.f      'tempdiff, 'tempdiff, 'diffleft   //set condition flag if |B-C| <= |B-A|    
+    vmvw.nz     'DCPred, 'leftDC            // move left accordingly
+
+    vaddw       'FixLeft, 'FixLeft, 'Quant3 // 4*quantVal needed, as data is int
+    vld32        DCScaler, [FixLeft, 0]
+   // vup.1       workarea, 'DCPred // move 16 bit entry to 32 bit area
+    vmul.3        workarea, 'DCScaler, 'DCPred // quantiser with current dc-scaler
+    vasrrp.1     DCPred, workarea, 20 // add 1<<19
+    
+    
+  
+    
+    vsubw.1      v1, v1, 'DCPred            // subtract prediction from DC value
+    
+    move16       FixLeft, block_no
+    vand        'FixLeft, 'FixLeft, 4
+    vjp.FixLeft  .chromasave // branch if chroma
+    vnop
+    vnop
+    vnop
+    
+    vim          cirPtr, CirBuf, 0
+    vaddw        'cirPtr, 'cirPtr, blockdouble
+    vst16        v1, [cirPtr, MPO_Y_DC_CoeffStore0] // store DC diff
+    
+    vaddw.1      v1, v1, 'DCPred        // add prediction back to difference
+    vim          FixLeft,  QuantVal, SDMOF_mpeg4_fwd_luma_dc_scaler
+    vld8w        DCScaler, [FixLeft, 0] // load dc_scaler
+    vmulw.1      v1, v1, 'DCScaler      // dequantise
+    // need to saturate
+    vminw.1      v1, v1, 2047           // saturate to 2047
+    
+    vst16        v1, [cirPtr, MPO_Y_IntraPredDC_Coeff] // store DC
+ // now set up output pointer to store for Inverse Q
+    vmovw       'temp, 0    
+    vim          cirPtr, temp, SDMOF_mpeg4_diff_pixel_offset
+    vaddw       'cirPtr, 'cirPtr, blockdouble 
+    vld16       'blkOutOffset, [cirPtr, 0 ]// load output offset
+
+       
+    vjp     .endpredict
+    vim          cirPtr, CirBuf, MPO_PixelCoeffBuffer 
+    vaddw       'cirPtr, 'cirPtr, blkOutOffset
+    vst16        v1, [cirPtr, 0] // save dc ready to be inverse dct'ed
+label   chromasave          
+
+    vst16        v1, [cirPtr, 0] // store DC diff
+    
+    vaddw.1      v1, v1, 'DCPred // add prediction back to difference
+    vim          FixLeft,  QuantVal, SDMOF_mpeg4_fwd_chroma_dc_scaler
+    vld8w        DCScaler, [FixLeft, 0] // load dc_scaler
+    vmulw.1      v1, v1, 'DCScaler    // dequantise
+    // need to saturate
+    vminw.1      v1, v1, 2047
+    vim          cirPtr, CirBuf, -8
+    vaddw       'cirPtr, 'cirPtr, 'blockdouble
+    vst16        v1, [cirPtr, MPO_UV_IntraPredDC_Coeff] // store DC diff
+     
+    vmovw       'temp, 0    
+    vim          cirPtr, temp, SDMOF_mpeg4_diff_pixel_offset
+    vaddw       'cirPtr, 'cirPtr, blockdouble 
+    vld16       'blkOutOffset, [cirPtr, 0 ]
+
+    vim          cirPtr, CirBuf, MPO_PixelCoeffBuffer 
+    vaddw       'cirPtr, 'cirPtr, blkOutOffset
+    vst16        v1, [cirPtr, 0]  // save dc ready to be inverse dct'ed
+label endpredict
+end
+begin    
+// section to calculate whether data needs to be sent for this block (cbp)
+    s16 cbp 
+    vec16 Inter
+    p16 zero
+    p16 temp = i0
+    s16 subblock : cbp
+    s16 shiftval : subblock
+    vec16 dcterm 
+	// now work out if any coeffs are of interest
+    regmap
+    move16          temp, Intra
+    vmovw          'zero, 0
+    vmovw           dcterm, 0 // initialise dcterm
+    vsnew          'temp, 0 // Intra holds all 1 if Intra, all 0 if Inter
+    vmvw.s.1        dcterm, v1 // if intra save dcterm
+    vmivw.s.1       v1,zero // zero DC term if Intra
+    
+  
+    
+    // find out if any non-zero values
+    vabsw        v1, v1  // take abs of first vec
+    vabsaw       v1, v9  // accum abs of next etc
+    vabsaw       v1, v6
+    vabsaw       v1, v7
+    vabsaw       v1, v8
+    vabsaw       v1, v3
+    vabsaw       v1, v4
+    vabsaw       v1, v5
+    vxsumw       v1, v1, 255 // every element contains sum of all coeffs
+    // now check to see if non-zero and set cbp accordingly
+    vsnew        v1, 0  // set sticky if non zero  
+     
+    vld16        cbp, [CirBuf,  MPO_NonZeroCoeffLuma] // load cbp
+    
+    move16       subblock, block_no
+    vim          temp,  zero, 11
+    vrsubw       shiftval, subblock, temp // (11 - block_no)
+    vim          temp, zero, 1
+    vlslvw      'temp, 'temp, 'shiftval  // 1<<(11-block_no)
+    vor.s       'cbp, 'cbp, 'temp       // or it with cbp if non-zero
+    
+   // vsnew        dcterm, 0           //no        // check dc term is non-zero (only poss in Intra)
+  //  vlsrw       'temp, 'temp, 6      //no         // create 1<< (5-block_no)
+   // vor.s       'cbp, 'cbp, 'temp    //no       // or it with cbp if non-zero
+    
+    vst16        cbp, [CirBuf, MPO_NonZeroCoeffLuma] // store it back
+end	
+
+// check to see if we have done all blocks
+    vim         block_no, block_no, 1
+    vim        temp, block_no, -6
+    vjp.temp    .MainLoop
+    vnop
+    vnop    
+    vnop
+// end of Main Block Loop
+    
+    
+
+
+label Finish // not currently used
+    // put back the normal rounding value
+    vmovw.1      auxreg, 16384
+    vmovw       'ptr, 0
+    vrput        auxreg, [ptr,5] 
+    
+	end
+endfunc		FDCT

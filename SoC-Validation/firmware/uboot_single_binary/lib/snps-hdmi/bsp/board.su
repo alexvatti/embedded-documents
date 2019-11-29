@@ -1,0 +1,9 @@
+board.c:37:5:board_Initialize	88	static
+board.c:275:6:board_PllWrite	24	static
+board.c:147:5:board_PixelClock	16	static
+board.c:82:5:board_AudioClock	8	static
+board.c:285:6:board_VideoGeneratorBypass	0	static
+board.c:290:5:board_PllRead	16	static
+board.c:300:6:board_PllReset	0	static
+board.c:305:6:board_AudioGeneratorBypass	0	static
+board.c:310:5:board_SupportedRefreshRate	16	static

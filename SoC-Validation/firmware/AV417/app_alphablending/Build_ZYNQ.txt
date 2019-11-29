@@ -1,0 +1,3 @@
+
+
+hcac -arc700 -Hnocrt -Hhostlib= -Xtimer0 -Xvraptor -Hanno -e _reset ../boot/ARC_ROM_VECTORS.s ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s shikhara_alphablend.c ../drivers/shikhara_uart.c -A ../linker/linkage_zynq.txt -o APP_ALPHABLENDING.out  -m > APP_ALPHABLENDING.map

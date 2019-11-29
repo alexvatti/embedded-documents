@@ -1,0 +1,70 @@
+Updated by Mike Nilsson on 12 July 2005
+---------------------------------------
+
+CH264Decoder.h, changed m_PacketLost from int to bool
+
+CH264Decoder.cpp: Changed so that the state of m_PacketLost is now retained from one call to the decoder to the next except for the case of decoding slice data. The problem was with the following type of sequence:  loss,  PPS,  non-IDR Slice data,  where packet loss is indicated with the PPS but not the slice data, and frame number discontinuity is detected on decoding the slice data and packet loss is not indicated, thus asserting an error condition.
+
+H264DecodedPictureBuffer.cpp, in function ActOnNextFieldRemappingInstruction changed 
+
+		m_RemappingFrameNumberPredictor = m_CurrentFrameNumber;
+to
+		m_RemappingPicNumberPredictor = 2 * m_CurrentFrameNumber + 1;
+
+as it is the picture number predictor that is used when remapping fields, not the frame number predictor.
+
+
+Updated by Tim Jebb on 12 July 2005
+-----------------------------------
+
+H264VLD.cpp
+
+the line 
+
+m_VLDDecodedLevelData[m_CoefficientIndex] *= (m_ByteBufferCodeNumber+1); 
+
+on or about line 4048 was changed to 
+
+m_VLDDecodedLevelData[m_CoefficientIndex] = (m_ByteBufferCodeNumber+1);
+
+which is slightly simpler but logically the same since at this point in the code m_VLDDecodedLevelData[m_CoefficientIndex] should always be 1.
+
+
+Updated by Mike Nilsson on 20 July 2005
+---------------------------------------
+
+CH264Encoder.cpp in the function ChangeSettings, the calculation of baseline_compatibility_flag did not consider whether CABAC was being used and whether weighted prediction was being used. If either of these is used, the bitstream is not compatible with the baseline profile.
+
+Updated by Tim Jebb on 5 August 2005
+------------------------------------
+
+Added functionality to CPicture to allow a single yuv file to be opened for reading, then read successively, each read getting the next picture, and then to be closed, as is traditionally the case with files.  Can achieve faster encoding.  Have updated the sample application to make use of this functionality, but have left the original code, commented out.
+
+Updated by Mike Nilsson on 10 August 2005
+-----------------------------------------
+
+CH264Encoder.cpp in the function SetBitRate added the line 
+
+	m_AverageBitsPerGOP = m_AverageBitsPerFrame * m_TotalNumberPerGOP;
+
+so that the function did in fact change the bit rate for encoding.
+
+Updated by Mike Nilsson on 11 August 2005
+-----------------------------------------
+
+CH264DecodedPictureBuffer.cpp. Added a new function OutputFrameBumpingNonExisting that is similar to OutputFrameBumping.
+
+This is called in the case of decoding non-existing frames. It has an additional test on m_ArrayPositionOfCurrentPicture, which has already been allocated for decoding the current frame into, and so must be included in the count of frames that are stored
+
+CH264DecodedPictureBuffer.h. Added declaration of the function OutputFrameBumpingNonExisting.
+
+H264VLDHeaders.cpp in the function VLDDecodeSequenceParameterSet, removed the chunk of code that sets m_MaxDecFrameBuffering, m_NumReorderFrames, and m_BumpingDecoder as this should be done when the sequence parameter set is activated and not when it is decoded.
+
+In the function VLDDecodeSliceHeader, added the code concerning m_MaxDecFrameBuffering, m_BumpingDecoder and m_RemainingBumpingDelay that had been removed from other parts, as this is where the sequence parameter set is activated. The only case in which bumping is not used is when num_reorder_frames is zero in which case it is known that pictures can be output as soon as they are decoded as there is no re-ordering. The parameter m_NumReorderFrames is no longer used.
+
+In the function VLDDecodeStartOfPicture, for the handling of non existing frames, changed the call to OutputFrameBumping to a call to the new function OutputFrameBumpingNonExisting.
+
+H264VLDVui.cpp. Removed all three chunks of code that set m_MaxDecFrameBuffering, m_NumReorderFrames, and m_BumpingDecoder as this should be done when the sequence parameter set is activated and not when it is decoded.
+
+CH264Decoder.h. Removed the dec;aration of m_NumReorderFrames.
+

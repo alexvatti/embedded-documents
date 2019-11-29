@@ -1,0 +1,5 @@
+stmicro.c:221:12:stmicro_read_fast	48	static
+stmicro.c:187:12:stmicro_wait_ready	32	static
+stmicro.c:240:12:stmicro_write	56	static
+stmicro.c:303:5:stmicro_erase	48	static
+stmicro.c:370:19:spi_flash_probe_stmicro	16	static

@@ -1,0 +1,9 @@
+hdcpParams.c:11:6:hdcpParams_Reset	0	static
+hdcpParams.c:19:5:hdcpParams_GetEnable11Feature	0	static
+hdcpParams.c:24:5:hdcpParams_GetRiCheck	0	static
+hdcpParams.c:29:5:hdcpParams_GetI2cFastMode	0	static
+hdcpParams.c:34:5:hdcpParams_GetEnhancedLinkVerification	0	static
+hdcpParams.c:39:6:hdcpParams_SetEnable11Feature	0	static
+hdcpParams.c:44:6:hdcpParams_SetEnhancedLinkVerification	0	static
+hdcpParams.c:49:6:hdcpParams_SetI2cFastMode	0	static
+hdcpParams.c:54:6:hdcpParams_SetRiCheck	0	static

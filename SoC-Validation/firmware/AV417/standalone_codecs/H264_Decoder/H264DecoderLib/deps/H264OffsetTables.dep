@@ -1,0 +1,6 @@
+
+H264OffsetTables.o:	\
+	./H264DecoderLib/H264Common/H264OffsetTables.cpp \
+	./H264DecoderLib/H264Common/H264EnumTypes.h \
+	./H264DecoderLib/H264Common/H264Warnings.h \
+	./H264DecoderLib/H264Common/H264OffsetTables.h 

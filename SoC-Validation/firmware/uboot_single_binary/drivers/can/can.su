@@ -1,0 +1,6 @@
+can.c:35:5:can_initialize	8	static
+can.c:46:5:can_register	8	static
+can.c:58:17:find_can_device	8	static
+can.c:74:5:can_init	16	static
+can.c:84:5:get_can_num	0	static
+can.c:88:6:can_list	0	static

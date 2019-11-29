@@ -1,0 +1,563 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+//  showstalls
+setw                108
+metaware
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable EncoderMain, 15
+
+
+
+#include "ArcMPC.h"
+#include "ArcFrameBuffers.h"
+#include "ArcMP4SDMTables.h"
+
+
+
+//------------------------------------------------------------------------------
+// Name:          CopyCurrentChromaToSDM
+// Purpose:       Copies the chroma components of the current macroblock from
+//                main memory to the current MPC pixel data area in the SDM
+// Arguments:     mbX = horizontal position in picture in macroblocks
+//                mbY = vertical position in picture in macroblocks
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyCurrentChromaToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+
+begin
+    p16                 picX = i8
+    p16                 picY = i9
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // chroma u
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, PCB_CURRENT_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dma commands only take 32 bit scalars, however CirBuf is a 16 bit scalar
+    // that we want to and an immediate to (and store in a 32 bit scalar).
+    // however there are no instructions to do this at present, so just perform
+    // a 16 bit operation on the bottom half of the 32 scalar knowing that the
+    // previous dr1 setup left the top bits set to zero
+    // dr0: sdm address
+    vim                 dmaOutReg16, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_U
+    vdmaiset            dr0, dmaOutReg32
+
+    // dr2: block info
+    //   [7:0] = 8 = horizontal block size
+    //  [15:8] = 8 = vertical block size
+    // [20:16] = FRAME_TABLE_U_CURR_ADDR = frame table index
+@   mov                 r0, ((FRAME_TABLE_U_INDEX + FRAME_TABLE_CURR_INDEX) << 16) | 0x0808
+    vdmaiset            dr2, r0
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // convert mb co-ordinates into pixel co-ordinates in the chroma plane
+    vmulw               'picX'picY, 'mbX'mbY, 8
+
+    // start dma in
+    vdmairun            picX, picY
+
+
+    // chroma u
+
+    // top bits are still assumed to be zero here
+    // dr0: sdm address
+    vim                 dmaOutReg16, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_V
+    vdmaiset            dr0, dmaOutReg32
+
+    // this dma reg must be written after dr0, for the reasons given above
+    // dr2: block info
+    //   [7:0] = 8 = horizontal block size
+    //  [15:8] = 8 = vertical block size
+    // [20:16] = FRAME_TABLE_V_CURR_ADDR = frame table index
+@   mov                 r0, ((FRAME_TABLE_V_INDEX + FRAME_TABLE_CURR_INDEX) << 16) | 0x0808
+    vdmaiset            dr2, r0
+
+    // start dma in
+    vdmairun            picX, picY
+
+end
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          CopyChromaPredToSDM
+// Purpose:       Copies the chroma prediction from
+//                main memory to the current MPC pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyChromaPredToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, CHROMA_WORKING_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 for chroma U and in r1 for chroma V
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_U_REF1_ADDR / FRAME_TABLE_V_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+//    vdmawait			0,0
+    
+end
+
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          OutputMacroblock
+// Purpose:       Copies the reconstructed MB from SDM to main memory
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                ChromaU = non zero for U component and zero for V component
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func OutputMacroblock
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, 16
+    vdmaoset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaoset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 for chroma U and in r1 for chroma V
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_U_REF1_ADDR / FRAME_TABLE_V_REF1_ADDR
+    vdmaoset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaoset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaoset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmaorun            mbX, mbY
+    
+end
+
+endfunc
+
+
+func SdmDmaIn
+    p32                 sdmAddr = k0
+    p32                 extMemAddr = k2
+    p32                 blkSize = k4
+    
+begin
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+    
+    // dr2: block info
+    // Place block size information and frame table index 
+    //   [7:0] = horizontal block size: 64*sizeof(unsigned short)
+    //  [15:8] = vertical block size:   1
+    // [20:16] = FRAME_TABLE:           31 (2D mode)
+    vdmaiset            dr2, blkSize
+
+    // dr4: system memory address (contained in frame table)
+    vdmaiset            dr4, extMemAddr
+
+    // start dma in
+    vdmairun            i0, i0
+    
+    vdmawait            0,0
+    
+end
+
+endfunc
+
+
+func.f                  RevertToSkipped
+    // Params -----------
+    p16                 cbIdx
+    p16                 dquant
+    p16                 LastTransQuant
+    // End params -------
+    
+    pubreg              cbIdx
+    pubreg              dquant
+    pubreg              LastTransQuant
+    
+    begin
+    p16                 mbtype, cbp
+    s16                 skp
+    p16                 quant, mv0
+    regmap
+        
+    
+//       if ( (DQuant == 0) &&    
+    vjp.dquant          .exit
+    vld8w.dquant        'LastTransQuant, [CirBuf, MPO_QuantValue] // No reverting => LastTransQuant <- qant
+    
+//            (cb.MBCodingType == MBCT_MPEG4_INTER16X16) &&
+    vld8w               'mbtype, [CirBuf, MPO_MBCodingType]
+    via                 mbtype, mbtype, MBCT_MPEG4_INTER16X16
+    vjp!mbtype          .exit
+    vld8w!mbtype        'LastTransQuant, [CirBuf, MPO_QuantValue] // No reverting => LastTransQuant <- qant
+
+//            (cbp == 0) &&
+    vld16               'cbp, [CirBuf, MPO_NonZeroCoeffLuma]
+    via                 cbp, cbp, 0xfc0
+    vjp.cbp             .exit
+    vld8w.cbp           'LastTransQuant, [CirBuf, MPO_QuantValue] // No reverting => LastTransQuant <- qant
+
+//            (mv[0].mvx == 0) && (mv[0].mvy == 0) )            
+    vld16               'mv0, [CirBuf, MPO_mv]
+    vnop
+    vjp.mv0             .exit
+    vld8w.mv0           'LastTransQuant, [CirBuf, MPO_QuantValue] // No reverting => LastTransQuant <- qant
+    vnop
+    
+//             Not transmitting the quant so we have to use the old one
+//             as that's what the decoder will do
+//             cb.QuantValue = m_LastTransmittedQuant[cb.WorkArea.SliceGroup];
+//             cb.MBCodingType = MBCT_H264_SKIPPED;
+    vmovw               skp, MBCT_MPEG4_SKIPPED
+    vmovw               'dquant, 0
+    vst8                'LastTransQuant, [CirBuf, MPO_QuantValue]
+    vst8                skp, [CirBuf, MPO_MBCodingType]
+    
+label exit
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0, [r0, 0]
+
+    // channels can only return 16 bit scalars
+    vsend               r0, cbIdx, 0 
+    vsend               r0, dquant, 1 
+    vsend               r0, LastTransQuant, 2
+
+@   mov                 r1, Service_DoEntropyEncode
+    vsend               r0, r1, 63    
+    end
+    
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          CopyMERefToSDM
+// Purpose:       Copies the ME reference data from
+//                main memory to the reference ME pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyMERefToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, ME_REFERENCE_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+    
+end
+
+endfunc
+//------------------------------------------------------------------------------
+// Name:          CopyMBLumaToSDM
+// Purpose:       Copies the MB current luma data from
+//                main memory to the MB circular buffer pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+
+func CopyMBLumaToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, PCB_CURRENT_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+    
+end
+
+endfunc
+
+func        CallBackStartME
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_StartME   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+func        CallBackIntraComplete
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_IntraComplete   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+func        CallBackDoFwdTransforms
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_DoFwdTransforms   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+func        CallBackDoEntropyEncode
+    // Params -----------
+    p16                 BufIdx
+    p16                 dquant
+    p16                 lastQuant
+    // End params -------
+    pubreg              BufIdx
+    pubreg              dquant
+    pubreg              lastQuant
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+    vsend               r0, dquant, 1 
+    vsend               r0, lastQuant, 2
+@   mov                 r1, Service_DoEntropyEncode   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+func        CallBackStartDeblock
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP01ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_StartDeblock   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+func        CallBackReleaseBuffer
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP01ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_ReleaseBuffer   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+func        CallBackWriteOutMB
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP01ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_CallBackWriteOutMB   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc

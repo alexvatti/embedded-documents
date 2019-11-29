@@ -1,0 +1,2 @@
+m400_mp_2_F000_MMU_APB_check_0_c.o: m400_mp_2_F000_MMU_APB_check_0_c.c \
+ m400_mp_2_F000_MMU_APB_check_0_c.h

@@ -1,0 +1,175 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+//    showstalls
+    setw                120
+    metaware
+    macrotable          SDM_Buffers,8
+    strict
+
+    include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#include "ArcSDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init members of MPC circular buffer
+// Sets CirBuf
+// Sets FixBuf
+// Sets CirLeft
+func                    SetCurrentMPC0
+    // Params -----------
+    p16                 cIdx            // Circular buffer index
+    p16                 Column          // MacroBlock column
+    p16                 leftIdx         // Circular buffer index of macro block to left
+    // End params -------
+    pubreg              cIdx, Column, leftIdx
+// Setup pointers
+    vmulw               'cIdx'leftIdx, 'cIdx'leftIdx, MPO_SIZE_OF_CIRCULAR_BUF_ENTRY
+    vmulw               'Column, 'Column, MPO_SIZE_OF_FIXED_ENTRY
+    vim                 CirBuf, cIdx, SDMOF_CircularBuffs
+    vim                 FixBuf, Column, SDMOF_FixedBuffs
+    vim                 CirLeft, leftIdx, SDMOF_CircularBuffs
+endfunc
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init ciruclar buffer entry
+// Assumes current MPC is set
+// Sends channel reply
+func                    InitCurrentMPC
+    // No params ------
+//  vst8                VZERO,[CirBuf,MPO_QuantValue]
+//  vst8                VZERO,[CirBuf,MPO_MBCodingType]     // MBCT_H264_UNKNOWN
+    vst16               VZERO,[CirBuf,MPO_NonZeroCoeffLuma]
+    vst8                VZERO,[CirBuf,MPO_NonZeroCoeffChroma]
+    vst8                VZERO,[CirBuf,MPO_WorkArea_BestIntraChromaMode]
+    vst128              VZERO,[CirBuf,MPO_CoeffCountSB]
+    vst8                VZERO,[CirBuf,MPO_UV_DC_NonZeroCoeff]
+begin
+    s16                 m1
+    vmovw               m1,-1
+    vst16               m1,[CirBuf,MPO_WorkArea_BestIntraLumaCost]
+end
+    vst8                VZERO,[CirBuf,MPO_WorkArea_BestIntraLumaMode]
+    vst8                VZERO,[CirBuf,MPO_WorkArea_BestIntraChromaMode]
+
+endfunc
+
+
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// SIMD memory copy. Must be in multiples of 64 Bytes (512 bits = 4 vectors)
+//debuginfo
+func MemCopy64Byte
+    // Params -----------
+    p16                 From            // Source ptr
+    p16                 To              // Dest Prr
+    p16                 Size            // Length in 4 vectors (must be greater than zero)
+    // End params -------
+    pubreg              From, To, Size
+
+begin
+    vec16               data0
+    vec16               data1
+    vec16               data2
+    vec16               data3
+
+    // adjust loop counter for vjd instruction
+    vim                 Size, Size, -1
+
+label loop
+    // load data from source
+    vld128              data0,[From, 0]
+    vld128              data1,[From, 16]
+    vld128              data2,[From, 32]
+    vld128              data3,[From, 48]
+
+    // store data at destination
+    vst128              data0,[To, 0]
+    vst128              data1,[To, 16]
+
+    // decrement and loop
+    vjd.Size            Size, .loop
+
+    // delay slot start
+
+    // store data at destination
+~   vst128              data2,[To, 32]
+~   vst128              data3,[To, 48]
+
+    // increment pointers
+~   vaddw               'From'To, 'From'To, 64
+
+    // delay slot end
+
+
+end
+
+endfunc
+
+
+
+func        CallBackStartME
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_StartME   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+
+func        CallBackStartDeblock
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_StartDeblock   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+
+
+
+
+
+
+
+
+

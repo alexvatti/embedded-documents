@@ -1,0 +1,16 @@
+productParams.c:12:6:productParams_Reset	0	static
+productParams.c:34:4:productParams_SetProductName	8	static
+productParams.c:52:6:productParams_GetProductName	0	static
+productParams.c:57:4:productParams_GetProductNameLength	0	static
+productParams.c:62:4:productParams_SetVendorName	8	static
+productParams.c:80:6:productParams_GetVendorName	0	static
+productParams.c:85:4:productParams_GetVendorNameLength	0	static
+productParams.c:90:4:productParams_SetSourceType	0	static
+productParams.c:96:4:productParams_GetSourceType	0	static
+productParams.c:101:4:productParams_SetOUI	0	static
+productParams.c:107:5:productParams_GetOUI	0	static
+productParams.c:112:4:productParams_SetVendorPayload	8	static
+productParams.c:130:6:productParams_GetVendorPayload	0	static
+productParams.c:135:4:productParams_GetVendorPayloadLength	0	static
+productParams.c:140:4:productParams_IsSourceProductValid	0	static
+productParams.c:147:4:productParams_IsVendorSpecificValid	0	static

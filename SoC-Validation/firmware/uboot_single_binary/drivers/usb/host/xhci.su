@@ -1,0 +1,10 @@
+xhci.c:132:12:handshake	24	static
+xhci.c:258:12:xhci_configure_endpoints	32	static
+xhci.c:185:5:xhci_reset	16	static
+xhci.c:473:5:usb_alloc_device	24	static
+xhci.c:520:5:xhci_check_maxpacket	24	static
+xhci.c:876:1:submit_int_msg	0	static
+xhci.c:896:1:submit_bulk_msg	8	static
+xhci.c:918:1:submit_control_msg	72	static
+xhci.c:953:5:usb_lowlevel_init	24	static
+xhci.c:1039:5:usb_lowlevel_stop	16	static

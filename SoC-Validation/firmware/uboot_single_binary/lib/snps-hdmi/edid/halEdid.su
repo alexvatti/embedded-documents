@@ -1,0 +1,15 @@
+halEdid.c:29:6:halEdid_SlaveAddress	16	static
+halEdid.c:35:6:halEdid_RequestAddr	16	static
+halEdid.c:41:6:halEdid_WriteData	16	static
+halEdid.c:47:4:halEdid_ReadData	8	static
+halEdid.c:53:6:halEdid_RequestRead	8	static
+halEdid.c:59:6:halEdid_RequestExtRead	8	static
+halEdid.c:65:6:halEdid_RequestWrite	8	static
+halEdid.c:71:6:halEdid_MasterClockDivision	16	static
+halEdid.c:78:6:halEdid_SegmentAddr	16	static
+halEdid.c:84:6:halEdid_SegmentPointer	16	static
+halEdid.c:90:6:halEdid_MaskInterrupts	16	static
+halEdid.c:98:6:halEdid_FastSpeedHighCounter	16	static
+halEdid.c:105:6:halEdid_FastSpeedLowCounter	16	static
+halEdid.c:112:6:halEdid_StandardSpeedHighCounter	16	static
+halEdid.c:119:6:halEdid_StandardSpeedLowCounter	16	static

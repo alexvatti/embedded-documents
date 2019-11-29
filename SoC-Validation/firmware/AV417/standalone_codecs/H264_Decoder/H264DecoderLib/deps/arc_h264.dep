@@ -1,0 +1,6 @@
+
+arc_h264.o:	H264DecoderLib/arc_h264.c \
+	./H264DecoderLib/stdint.h \
+	./H264DecoderLib/H264Decoder/H264Decoder.h \
+	./H264DecoderLib/arc_codecs.h \
+	H264DecoderLib/arc_codecs.h 

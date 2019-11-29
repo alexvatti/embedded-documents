@@ -1,0 +1,520 @@
+##################################################################################
+#
+# Auto-generated Makefile, by buildmake
+#
+##################################################################################
+
+#########################################################
+# Declare all required build variables
+#########################################################
+
+DELETE= del
+
+#options
+
+export ENABLE_VLC=true
+export ENABLE_SIMD=true
+
+#tools setup
+
+BASEDIR=.
+APPDIR=H264DecoderApp
+LIBDIR=H264DecoderLib
+
+INCLUDES= -I./H264DecoderLib -I./H264DecoderLib/H264Decoder -I./H264DecoderLib/H264Common -I./H264DecoderLib/VideoCommon -I./H264DecoderLib/H264SIMDDec -I./H264DecoderLib/H264VLCDec -I./H264DecoderApp/Performances
+OPT_FLAGS= -DD32k_I32k
+ifeq (${ENABLE_VLC},true)
+OPT_FLAGS+= -DCAVLC_HW_PRESENT
+endif
+ifeq (${ENABLE_SIMD},true)
+OPT_FLAGS+= -Xsimd -DAURORA_HW_SIM -DAURORA_XFORM  -DAURORA_SUBPEL -DAURORA_DMA -DAURORA_DEBLOCK -DAURORA_SUBPEL_MACROS 
+endif
+export OPT_FLAGS
+
+MCC_PATH=
+MCC_CC=${MCC_PATH}mcc
+MCC_CC_FLAGS= -Hhostlib= -DH264_ACC_MODEL_BT -DD_UNIX -DUNIX -DNDEBUG -D_no_GENERATE_PROFILING_REPORT -DnoNO_PIXEL_OPERATION -D__ARC__ -arc700 -Hi -Hon=Long_enums -Xlib -Xnorm -Xswap -Xmpy  -Hon=Bool -w0 -Hsdata0  -Hinlfactor=900 -Hinlsize=260 -O6 
+MCC_LD=${MCC_PATH}mcc
+MCC_LD_FLAGS=-arc700 -Hhostlib= 
+MCC_AR=${MCC_PATH}arac
+MCC_AR_FLAGS=-cru 
+MCC_DEP=${MCC_PATH}mcc
+MCC_DEP_FLAGS=-Hsilent -Hrel -Hmake
+
+LIBS = 
+
+#Individual file build rules
+
+APPOBJS=${APPDIR}/obj/ARC_ROM_VECTORS.o ${APPDIR}/obj/serial_pl01x.o ${APPDIR}/obj/main.o ${APPDIR}/obj/uncached_buf.o
+APPDEPS=${APPDIR}/deps/ARC_ROM_VECTORS.dep ${APPDIR}/deps/serial_pl01x.dep ${APPDIR}/deps/main.dep ${APPDIR}/deps/uncached_buf.dep
+LIBOBJS=${LIBDIR}/obj/CH264Decoder.o ${LIBDIR}/obj/H264ByteBuffer.o ${LIBDIR}/obj/H264DecodedPictureBuffer.o ${LIBDIR}/obj/H264Decoder.o ${LIBDIR}/obj/H264DecoderControl.o ${LIBDIR}/obj/H264DecoderErrorConcealment.o ${LIBDIR}/obj/H264DecoderLoopFilter.o ${LIBDIR}/obj/H264DecoderMotionVectors.o ${LIBDIR}/obj/H264DecoderTables.o ${LIBDIR}/obj/H264InterRecon.o ${LIBDIR}/obj/H264IntraRecon.o ${LIBDIR}/obj/H264VLD.o ${LIBDIR}/obj/H264VLDHeaders.o ${LIBDIR}/obj/h264VLDSei.o ${LIBDIR}/obj/H264VLDTables.o ${LIBDIR}/obj/H264VLDVui.o ${LIBDIR}/obj/H264MotionVectorList.o ${LIBDIR}/obj/H264OffsetTables.o ${LIBDIR}/obj/H264ParameterSets.o ${LIBDIR}/obj/H264Tables.o ${LIBDIR}/obj/H264Transform.o ${LIBDIR}/obj/BTPicture.o ${LIBDIR}/obj/picture_encoder.o ${LIBDIR}/obj/SymbolByteBuffer.o ${LIBDIR}/obj/memctl.o ${LIBDIR}/obj/arc_h264.o
+LIBDEPS=${LIBDIR}/deps/CH264Decoder.dep ${LIBDIR}/deps/H264ByteBuffer.dep ${LIBDIR}/deps/H264DecodedPictureBuffer.dep ${LIBDIR}/deps/H264Decoder.dep ${LIBDIR}/deps/H264DecoderControl.dep ${LIBDIR}/deps/H264DecoderErrorConcealment.dep ${LIBDIR}/deps/H264DecoderLoopFilter.dep ${LIBDIR}/deps/H264DecoderMotionVectors.dep ${LIBDIR}/deps/H264DecoderTables.dep ${LIBDIR}/deps/H264InterRecon.dep ${LIBDIR}/deps/H264IntraRecon.dep ${LIBDIR}/deps/H264VLD.dep ${LIBDIR}/deps/H264VLDHeaders.dep ${LIBDIR}/deps/h264VLDSei.dep ${LIBDIR}/deps/H264VLDTables.dep ${LIBDIR}/deps/H264VLDVui.dep ${LIBDIR}/deps/H264MotionVectorList.dep ${LIBDIR}/deps/H264OffsetTables.dep ${LIBDIR}/deps/H264ParameterSets.dep ${LIBDIR}/deps/H264Tables.dep ${LIBDIR}/deps/H264Transform.dep ${LIBDIR}/deps/BTPicture.dep ${LIBDIR}/deps/picture_encoder.dep ${LIBDIR}/deps/SymbolByteBuffer.dep ${LIBDIR}/deps/memctl.dep ${LIBDIR}/deps/arc_h264.dep
+ifeq (${ENABLE_VLC},true)
+endif
+ifeq (${ENABLE_SIMD},true)
+LIBOBJS+=${LIBDIR}/obj/ARCMedia.o ${LIBDIR}/obj/AuroraH264ChromaInterPred.o ${LIBDIR}/obj/AuroraH264ChromaIntraPred.o ${LIBDIR}/obj/AuroraH264Deblock.o ${LIBDIR}/obj/AuroraH264Dec.o ${LIBDIR}/obj/AuroraH264DMA.o ${LIBDIR}/obj/AuroraH264InterRecon.o ${LIBDIR}/obj/AuroraH264IntraPCM.o ${LIBDIR}/obj/AuroraH264Luma16x16IntraPred.o ${LIBDIR}/obj/AuroraH264Luma4x4IntraPred.o ${LIBDIR}/obj/AuroraH264ReconChroma.o ${LIBDIR}/obj/AuroraH264ReconLuma.o ${LIBDIR}/obj/AuroraH264Xforms.o ${LIBDIR}/obj/AuroraRecMgr.o
+LIBDEPS+=${LIBDIR}/deps/ARCMedia.dep ${LIBDIR}/deps/AuroraH264ChromaInterPred.dep ${LIBDIR}/deps/AuroraH264ChromaIntraPred.dep ${LIBDIR}/deps/AuroraH264Deblock.dep ${LIBDIR}/deps/AuroraH264Dec.dep ${LIBDIR}/deps/AuroraH264DMA.dep ${LIBDIR}/deps/AuroraH264InterRecon.dep ${LIBDIR}/deps/AuroraH264IntraPCM.dep ${LIBDIR}/deps/AuroraH264Luma16x16IntraPred.dep ${LIBDIR}/deps/AuroraH264Luma4x4IntraPred.dep ${LIBDIR}/deps/AuroraH264ReconChroma.dep ${LIBDIR}/deps/AuroraH264ReconLuma.dep ${LIBDIR}/deps/AuroraH264Xforms.dep ${LIBDIR}/deps/AuroraRecMgr.dep
+endif
+
+
+#########################################################
+# Standard build targets
+#########################################################
+
+# default build
+
+default: dep all
+
+all: bin
+
+#dependencies
+
+dep: ${APPDEPS}
+
+libdep: ${LIBDEPS}
+
+# clean builds
+
+libdepclean:
+	${DELETE} ${LIBDIR}\deps\CH264Decoder.dep ${LIBDIR}\deps\H264ByteBuffer.dep ${LIBDIR}\deps\H264DecodedPictureBuffer.dep ${LIBDIR}\deps\H264Decoder.dep ${LIBDIR}\deps\H264DecoderControl.dep ${LIBDIR}\deps\H264DecoderErrorConcealment.dep ${LIBDIR}\deps\H264DecoderLoopFilter.dep ${LIBDIR}\deps\H264DecoderMotionVectors.dep ${LIBDIR}\deps\H264DecoderTables.dep ${LIBDIR}\deps\H264InterRecon.dep ${LIBDIR}\deps\H264IntraRecon.dep ${LIBDIR}\deps\H264VLD.dep ${LIBDIR}\deps\H264VLDHeaders.dep ${LIBDIR}\deps\h264VLDSei.dep ${LIBDIR}\deps\H264VLDTables.dep ${LIBDIR}\deps\H264VLDVui.dep ${LIBDIR}\deps\H264MotionVectorList.dep ${LIBDIR}\deps\H264OffsetTables.dep ${LIBDIR}\deps\H264ParameterSets.dep ${LIBDIR}\deps\H264Tables.dep ${LIBDIR}\deps\H264Transform.dep ${LIBDIR}\deps\BTPicture.dep ${LIBDIR}\deps\picture_encoder.dep ${LIBDIR}\deps\SymbolByteBuffer.dep ${LIBDIR}\deps\memctl.dep ${LIBDIR}\deps\arc_h264.dep  ${LIBDIR}\deps\ARCMedia.dep ${LIBDIR}\deps\AuroraH264ChromaInterPred.dep ${LIBDIR}\deps\AuroraH264ChromaIntraPred.dep ${LIBDIR}\deps\AuroraH264Deblock.dep ${LIBDIR}\deps\AuroraH264Dec.dep ${LIBDIR}\deps\AuroraH264DMA.dep ${LIBDIR}\deps\AuroraH264InterRecon.dep ${LIBDIR}\deps\AuroraH264IntraPCM.dep ${LIBDIR}\deps\AuroraH264Luma16x16IntraPred.dep ${LIBDIR}\deps\AuroraH264Luma4x4IntraPred.dep ${LIBDIR}\deps\AuroraH264ReconChroma.dep ${LIBDIR}\deps\AuroraH264ReconLuma.dep ${LIBDIR}\deps\AuroraH264Xforms.dep ${LIBDIR}\deps\AuroraRecMgr.dep
+
+clean:
+	${DELETE} ${APPDIR}\obj\main.o ${APPDIR}\obj\ARC_ROM_VECTORS.o ${APPDIR}\obj\serial_pl01x.o ${APPDIR}\obj\uncached_buf.o h264dec h264.map
+
+depclean:
+	${DELETE} ${APPDIR}\deps\main.dep ${APPDIR}\deps\ARC_ROM_VECTORS.dep ${APPDIR}\deps\serial_pl01x.dep ${APPDIR}\deps\uncached_buf.dep
+libclean:
+	${DELETE}  ${LIBDIR}\obj\CH264Decoder.o ${LIBDIR}\obj\H264ByteBuffer.o ${LIBDIR}\obj\H264DecodedPictureBuffer.o ${LIBDIR}\obj\H264Decoder.o ${LIBDIR}\obj\H264DecoderControl.o ${LIBDIR}\obj\H264DecoderErrorConcealment.o ${LIBDIR}\obj\H264DecoderLoopFilter.o ${LIBDIR}\obj\H264DecoderMotionVectors.o ${LIBDIR}\obj\H264DecoderTables.o ${LIBDIR}\obj\H264InterRecon.o ${LIBDIR}\obj\H264IntraRecon.o ${LIBDIR}\obj\H264VLD.o ${LIBDIR}\obj\H264VLDHeaders.o ${LIBDIR}\obj\h264VLDSei.o ${LIBDIR}\obj\H264VLDTables.o ${LIBDIR}\obj\H264VLDVui.o ${LIBDIR}\obj\H264MotionVectorList.o ${LIBDIR}\obj\H264OffsetTables.o ${LIBDIR}\obj\H264ParameterSets.o ${LIBDIR}\obj\H264Tables.o ${LIBDIR}\obj\H264Transform.o ${LIBDIR}\obj\BTPicture.o ${LIBDIR}\obj\picture_encoder.o ${LIBDIR}\obj\SymbolByteBuffer.o ${LIBDIR}\obj\memctl.o ${LIBDIR}\obj\arc_h264.o ${LIBDIR}\obj\ARCMedia.o ${LIBDIR}\obj\AuroraH264ChromaInterPred.o ${LIBDIR}\obj\AuroraH264ChromaIntraPred.o ${LIBDIR}\obj\AuroraH264Deblock.o ${LIBDIR}\obj\AuroraH264Dec.o ${LIBDIR}\obj\AuroraH264DMA.o ${LIBDIR}\obj\AuroraH264InterRecon.o ${LIBDIR}\obj\AuroraH264IntraPCM.o ${LIBDIR}\obj\AuroraH264Luma16x16IntraPred.o ${LIBDIR}\obj\AuroraH264Luma4x4IntraPred.o ${LIBDIR}\obj\AuroraH264ReconChroma.o ${LIBDIR}\obj\AuroraH264ReconLuma.o ${LIBDIR}\obj\AuroraH264Xforms.o ${LIBDIR}\obj\AuroraRecMgr.o ${LIBDIR}\libh264dec.a
+
+
+
+
+#Generate a library of all files
+
+lib: ${LIBDIR}/libh264dec.a
+${LIBDIR}/libh264dec.a: ${LIBOBJS}
+	${MCC_AR} ${MCC_AR_FLAGS} ${LIBDIR}/libh264dec.a ${LIBOBJS}
+
+#Generate the executable
+
+all: bin
+bin: h264dec
+h264dec: ${APPOBJS} ${LIBDIR}/libh264dec.a 
+	${MCC_LD} ${MCC_LD_FLAGS} -e _reset h264.cmd -Hldopt=-Csections -Hldopt=-Coutput=h264.map ${APPOBJS} ${LIBDIR}/libh264dec.a  ${LIBS} -o h264dec
+
+
+#########################################################
+# Individual file build control for library files
+#########################################################
+
+
+#dependency file generation
+${LIBDIR}/deps/CH264Decoder.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/CH264Decoder.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/CH264Decoder.cpp > ${LIBDIR}/deps/CH264Decoder.dep ; tools/formatdep.pl ${LIBDIR}/deps/CH264Decoder.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/CH264Decoder.dep
+#default target for make
+${LIBDIR}/obj/CH264Decoder.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/CH264Decoder.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264ByteBuffer.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264ByteBuffer.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264ByteBuffer.cpp > ${LIBDIR}/deps/H264ByteBuffer.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264ByteBuffer.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264ByteBuffer.dep
+#default target for make
+${LIBDIR}/obj/H264ByteBuffer.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264ByteBuffer.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264DecodedPictureBuffer.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecodedPictureBuffer.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecodedPictureBuffer.cpp > ${LIBDIR}/deps/H264DecodedPictureBuffer.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264DecodedPictureBuffer.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264DecodedPictureBuffer.dep
+#default target for make
+${LIBDIR}/obj/H264DecodedPictureBuffer.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecodedPictureBuffer.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264Decoder.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264Decoder.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264Decoder.cpp > ${LIBDIR}/deps/H264Decoder.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264Decoder.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264Decoder.dep
+#default target for make
+${LIBDIR}/obj/H264Decoder.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264Decoder.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264DecoderControl.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderControl.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderControl.cpp > ${LIBDIR}/deps/H264DecoderControl.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264DecoderControl.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264DecoderControl.dep
+#default target for make
+${LIBDIR}/obj/H264DecoderControl.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderControl.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264DecoderErrorConcealment.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderErrorConcealment.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderErrorConcealment.cpp > ${LIBDIR}/deps/H264DecoderErrorConcealment.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264DecoderErrorConcealment.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264DecoderErrorConcealment.dep
+#default target for make
+${LIBDIR}/obj/H264DecoderErrorConcealment.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderErrorConcealment.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264DecoderLoopFilter.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderLoopFilter.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderLoopFilter.cpp > ${LIBDIR}/deps/H264DecoderLoopFilter.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264DecoderLoopFilter.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264DecoderLoopFilter.dep
+#default target for make
+${LIBDIR}/obj/H264DecoderLoopFilter.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderLoopFilter.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264DecoderMotionVectors.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderMotionVectors.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderMotionVectors.cpp > ${LIBDIR}/deps/H264DecoderMotionVectors.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264DecoderMotionVectors.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264DecoderMotionVectors.dep
+#default target for make
+${LIBDIR}/obj/H264DecoderMotionVectors.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderMotionVectors.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264DecoderTables.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderTables.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderTables.cpp > ${LIBDIR}/deps/H264DecoderTables.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264DecoderTables.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264DecoderTables.dep
+#default target for make
+${LIBDIR}/obj/H264DecoderTables.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264DecoderTables.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264InterRecon.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264InterRecon.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264InterRecon.cpp > ${LIBDIR}/deps/H264InterRecon.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264InterRecon.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264InterRecon.dep
+#default target for make
+${LIBDIR}/obj/H264InterRecon.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264InterRecon.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264IntraRecon.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264IntraRecon.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264IntraRecon.cpp > ${LIBDIR}/deps/H264IntraRecon.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264IntraRecon.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264IntraRecon.dep
+#default target for make
+${LIBDIR}/obj/H264IntraRecon.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264IntraRecon.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264VLD.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLD.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLD.cpp > ${LIBDIR}/deps/H264VLD.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264VLD.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264VLD.dep
+#default target for make
+${LIBDIR}/obj/H264VLD.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLD.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264VLDHeaders.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDHeaders.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDHeaders.cpp > ${LIBDIR}/deps/H264VLDHeaders.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264VLDHeaders.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264VLDHeaders.dep
+#default target for make
+${LIBDIR}/obj/H264VLDHeaders.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDHeaders.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/h264VLDSei.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/h264VLDSei.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/h264VLDSei.cpp > ${LIBDIR}/deps/h264VLDSei.dep ; tools/formatdep.pl ${LIBDIR}/deps/h264VLDSei.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/h264VLDSei.dep
+#default target for make
+${LIBDIR}/obj/h264VLDSei.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/h264VLDSei.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264VLDTables.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDTables.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDTables.cpp > ${LIBDIR}/deps/H264VLDTables.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264VLDTables.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264VLDTables.dep
+#default target for make
+${LIBDIR}/obj/H264VLDTables.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDTables.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264VLDVui.dep: ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDVui.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDVui.cpp > ${LIBDIR}/deps/H264VLDVui.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264VLDVui.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264VLDVui.dep
+#default target for make
+${LIBDIR}/obj/H264VLDVui.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Decoder/H264VLDVui.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264MotionVectorList.dep: ${BASEDIR}/${LIBDIR}/H264Common/H264MotionVectorList.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264MotionVectorList.cpp > ${LIBDIR}/deps/H264MotionVectorList.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264MotionVectorList.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264MotionVectorList.dep
+#default target for make
+${LIBDIR}/obj/H264MotionVectorList.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264MotionVectorList.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264OffsetTables.dep: ${BASEDIR}/${LIBDIR}/H264Common/H264OffsetTables.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264OffsetTables.cpp > ${LIBDIR}/deps/H264OffsetTables.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264OffsetTables.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264OffsetTables.dep
+#default target for make
+${LIBDIR}/obj/H264OffsetTables.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264OffsetTables.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264ParameterSets.dep: ${BASEDIR}/${LIBDIR}/H264Common/H264ParameterSets.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264ParameterSets.cpp > ${LIBDIR}/deps/H264ParameterSets.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264ParameterSets.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264ParameterSets.dep
+#default target for make
+${LIBDIR}/obj/H264ParameterSets.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264ParameterSets.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264Tables.dep: ${BASEDIR}/${LIBDIR}/H264Common/H264Tables.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264Tables.cpp > ${LIBDIR}/deps/H264Tables.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264Tables.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264Tables.dep
+#default target for make
+${LIBDIR}/obj/H264Tables.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264Tables.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/H264Transform.dep: ${BASEDIR}/${LIBDIR}/H264Common/H264Transform.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264Transform.cpp > ${LIBDIR}/deps/H264Transform.dep ; tools/formatdep.pl ${LIBDIR}/deps/H264Transform.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/H264Transform.dep
+#default target for make
+${LIBDIR}/obj/H264Transform.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264Common/H264Transform.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/BTPicture.dep: ${BASEDIR}/${LIBDIR}/VideoCommon/BTPicture.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/VideoCommon/BTPicture.cpp > ${LIBDIR}/deps/BTPicture.dep ; tools/formatdep.pl ${LIBDIR}/deps/BTPicture.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/BTPicture.dep
+#default target for make
+${LIBDIR}/obj/BTPicture.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/VideoCommon/BTPicture.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/picture_encoder.dep: ${BASEDIR}/${LIBDIR}/VideoCommon/picture_encoder.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/VideoCommon/picture_encoder.cpp > ${LIBDIR}/deps/picture_encoder.dep ; tools/formatdep.pl ${LIBDIR}/deps/picture_encoder.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/picture_encoder.dep
+#default target for make
+${LIBDIR}/obj/picture_encoder.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/VideoCommon/picture_encoder.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/SymbolByteBuffer.dep: ${BASEDIR}/${LIBDIR}/VideoCommon/SymbolByteBuffer.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/VideoCommon/SymbolByteBuffer.cpp > ${LIBDIR}/deps/SymbolByteBuffer.dep ; tools/formatdep.pl ${LIBDIR}/deps/SymbolByteBuffer.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/SymbolByteBuffer.dep
+#default target for make
+${LIBDIR}/obj/SymbolByteBuffer.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/VideoCommon/SymbolByteBuffer.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/memctl.dep: ${LIBDIR}/memctl.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${LIBDIR}/memctl.c > ${LIBDIR}/deps/memctl.dep ; tools/formatdep.pl ${LIBDIR}/deps/memctl.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/memctl.dep
+#default target for make
+${LIBDIR}/obj/memctl.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${LIBDIR}/memctl.c -o $@
+
+#dependency file generation
+${LIBDIR}/deps/arc_h264.dep: ${LIBDIR}/arc_h264.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${LIBDIR}/arc_h264.c > ${LIBDIR}/deps/arc_h264.dep ; tools/formatdep.pl ${LIBDIR}/deps/arc_h264.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/arc_h264.dep
+#default target for make
+${LIBDIR}/obj/arc_h264.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${LIBDIR}/arc_h264.c -o $@
+
+#dependency file generation
+${LIBDIR}/deps/ARCMedia.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/ARCMedia.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/ARCMedia.cpp > ${LIBDIR}/deps/ARCMedia.dep ; tools/formatdep.pl ${LIBDIR}/deps/ARCMedia.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/ARCMedia.dep
+#default target for make
+${LIBDIR}/obj/ARCMedia.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/ARCMedia.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264ChromaInterPred.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ChromaInterPred.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ChromaInterPred.cpp > ${LIBDIR}/deps/AuroraH264ChromaInterPred.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264ChromaInterPred.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264ChromaInterPred.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264ChromaInterPred.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ChromaInterPred.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264ChromaIntraPred.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ChromaIntraPred.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ChromaIntraPred.cpp > ${LIBDIR}/deps/AuroraH264ChromaIntraPred.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264ChromaIntraPred.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264ChromaIntraPred.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264ChromaIntraPred.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ChromaIntraPred.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264Deblock.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Deblock.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Deblock.cpp > ${LIBDIR}/deps/AuroraH264Deblock.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264Deblock.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264Deblock.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264Deblock.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Deblock.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264Dec.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Dec.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Dec.cpp > ${LIBDIR}/deps/AuroraH264Dec.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264Dec.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264Dec.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264Dec.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Dec.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264DMA.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264DMA.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264DMA.cpp > ${LIBDIR}/deps/AuroraH264DMA.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264DMA.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264DMA.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264DMA.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264DMA.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264InterRecon.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264InterRecon.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264InterRecon.cpp > ${LIBDIR}/deps/AuroraH264InterRecon.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264InterRecon.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264InterRecon.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264InterRecon.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264InterRecon.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264IntraPCM.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264IntraPCM.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264IntraPCM.cpp > ${LIBDIR}/deps/AuroraH264IntraPCM.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264IntraPCM.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264IntraPCM.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264IntraPCM.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264IntraPCM.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264Luma16x16IntraPred.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Luma16x16IntraPred.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Luma16x16IntraPred.cpp > ${LIBDIR}/deps/AuroraH264Luma16x16IntraPred.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264Luma16x16IntraPred.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264Luma16x16IntraPred.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264Luma16x16IntraPred.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Luma16x16IntraPred.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264Luma4x4IntraPred.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Luma4x4IntraPred.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Luma4x4IntraPred.cpp > ${LIBDIR}/deps/AuroraH264Luma4x4IntraPred.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264Luma4x4IntraPred.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264Luma4x4IntraPred.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264Luma4x4IntraPred.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Luma4x4IntraPred.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264ReconChroma.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ReconChroma.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ReconChroma.cpp > ${LIBDIR}/deps/AuroraH264ReconChroma.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264ReconChroma.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264ReconChroma.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264ReconChroma.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ReconChroma.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264ReconLuma.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ReconLuma.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ReconLuma.cpp > ${LIBDIR}/deps/AuroraH264ReconLuma.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264ReconLuma.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264ReconLuma.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264ReconLuma.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264ReconLuma.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraH264Xforms.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Xforms.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Xforms.cpp > ${LIBDIR}/deps/AuroraH264Xforms.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraH264Xforms.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraH264Xforms.dep
+#default target for make
+${LIBDIR}/obj/AuroraH264Xforms.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraH264Xforms.cpp -o $@
+
+#dependency file generation
+${LIBDIR}/deps/AuroraRecMgr.dep: ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraRecMgr.cpp
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraRecMgr.cpp > ${LIBDIR}/deps/AuroraRecMgr.dep ; tools/formatdep.pl ${LIBDIR}/deps/AuroraRecMgr.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/AuroraRecMgr.dep
+#default target for make
+${LIBDIR}/obj/AuroraRecMgr.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}/${LIBDIR}/H264SIMDDec/AuroraRecMgr.cpp -o $@
+
+#########################################################
+# Individual file build control for application files
+#########################################################
+
+
+#dependency file generation
+${APPDIR}/deps/ARC_ROM_VECTORS.dep: ${APPDIR}/ARC_ROM_VECTORS.s
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/ARC_ROM_VECTORS.s> ${APPDIR}/deps/ARC_ROM_VECTORS.dep ; tools/formatdep.pl ${APPDIR}/deps/ARC_ROM_VECTORS.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/ARC_ROM_VECTORS.dep
+#default target for make
+${APPDIR}/obj/ARC_ROM_VECTORS.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/ARC_ROM_VECTORS.s -o $@
+
+
+${APPDIR}/deps/main.dep: ${APPDIR}/main.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/main.c > ${APPDIR}/deps/main.dep ; tools/formatdep.pl ${APPDIR}/deps/main.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/main.dep
+#default target for make
+${APPDIR}/obj/main.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/main.c -o $@
+
+
+${APPDIR}/deps/serial_pl01x.dep: ${APPDIR}/serial_pl01x.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/serial_pl01x.c > ${APPDIR}/deps/serial_pl01x.dep ; tools/formatdep.pl ${APPDIR}/deps/serial_pl01x.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/serial_pl01x.dep
+#default target for make
+${APPDIR}/obj/serial_pl01x.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/serial_pl01x.c -o $@
+
+#dependency file generation
+${APPDIR}/deps/uncached_buf.dep: ${APPDIR}/uncached_buf.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/uncached_buf.c > ${APPDIR}/deps/uncached_buf.dep ; tools/formatdep.pl ${APPDIR}/deps/uncached_buf.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/uncached_buf.dep
+#default target for make
+${APPDIR}/obj/uncached_buf.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/uncached_buf.c -o $@
+		
+#########################################################
+# Individual file build control for subproject files
+#########################################################
+
+
+#########################################################
+# End of Makefile
+#########################################################
+

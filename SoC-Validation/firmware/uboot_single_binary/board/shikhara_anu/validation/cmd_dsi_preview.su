@@ -1,0 +1,2 @@
+cmd_dsi_preview.c:11:5:conversion_dsi	16	static
+cmd_dsi_preview.c:32:6:do_preview_on_dsi	8	static

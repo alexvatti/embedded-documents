@@ -1,0 +1,333 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+
+#include "ArcMPC.h"
+#include "ArcChannelRoutines.h"
+
+    strict
+// showstalls
+setw                108
+metaware
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable H264MotionEstimation, 8
+
+
+
+//------------------------------------------------------------------------------
+// Name:          CalculateSkippedChromaCost
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CalculateSkippedChromaCost
+    // function arguments
+
+begin
+    // return value
+    p32                 WorstSkippedChromaCost = k0 // i0 & i1
+    p16                 WorstSkippedChromaCostLow = i0 // synonym for low 16 bit portion
+    p16                 WorstSkippedChromaCostHigh = i1 // synonym for high 16 bit portion
+
+    p16                 cpel // current pointer
+    p16                 ppel // prediction pointer
+
+    p16                 innerRow
+    p16                 outerRow
+
+    vec32               current0
+    vec32               current1
+    vec32               current2
+    vec32               current3
+
+    vec32               prediction0
+    vec32               prediction1
+    vec32               prediction2
+    vec32               prediction3
+
+    vec32               ssd0
+    vec32               ssd1
+    vec32               ssd2
+    vec32               ssd3
+
+    vec32               cost0
+    vec32               cost1
+    vec32               cost2
+    vec32               cost3
+
+
+    // setup source pointers
+    vim                 cpel, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_U // will do both u and v
+    vim                 ppel, CirBuf, MPO_PixelCoeffBuffer + PCB_REFERENCE_U // will do both u and v
+
+    // reset worst cost
+    vmovw               'WorstSkippedChromaCost, 0
+
+    // setup outer loop counter
+    // 2 iterations total, first row of 4x4s, then second row of 4x4s (for u and v)
+    vmovw               'outerRow, 2-1
+
+
+    // outerRowLoop start
+label outerRowLoop
+
+    // reset 4x4 costs
+    vmovw               cost0, 0
+    vmovw               cost1, 0
+    vmovw               cost2, 0
+    vmovw               cost3, 0
+
+    // setup inner loop counter
+    // 4 rows total, 1 row per loop (u + v)
+    vmovw               'innerRow, (4/1)-1
+
+
+    // innerRowLoop start
+label innerRowLoop
+
+    // load current u and v (8 bits per pixel)
+    vld32wl             current0, cpel, 0 // u
+    vld32wl             current1, cpel, 4 // u
+    vld32wl             current2, cpel, 8 // v
+    vld32wl             current3, cpel, 12 // v
+
+    // unpack current from 16 bit lanes into 32 bit lanes
+    vup                 current0, current0
+    vup                 current1, current1
+    vup                 current2, current2
+    vup                 current3, current3
+
+    // load prediction u and v (8 bits per pixel)
+    vld32wl             prediction0, ppel, 0 // u
+    vld32wl             prediction1, ppel, 4 // u
+    vld32wl             prediction2, ppel, 8 // v
+    vld32wl             prediction3, ppel, 12 // v
+
+    // unpack prediction from 16 bit lanes into 32 bit lanes
+    vup                 prediction0, prediction0
+    vup                 prediction1, prediction1
+    vup                 prediction2, prediction2
+    vup                 prediction3, prediction3
+
+    // calculate residual i.e. the differences for 1 row of u and v (9 bits
+    // stored in 32 bits per pixel)
+    vsub                ssd0, current0, prediction0
+    vsub                ssd1, current1, prediction1
+    vsub                ssd2, current2, prediction2
+    vsub                ssd3, current3, prediction3
+
+    // calculate sum of square differences for for 1 row of u and v (18 bits)
+    vmul                ssd0, ssd0, ssd0
+    vmul                ssd1, ssd1, ssd1
+    vmul                ssd2, ssd2, ssd2
+    vmul                ssd3, ssd3, ssd3
+
+    // sum 4x4 ssds vertically
+    vadd                cost0, cost0, ssd0
+    vadd                cost1, cost1, ssd1
+    vadd                cost2, cost2, ssd2
+
+    // decrement and loop
+    vjd.innerRow        innerRow, .innerRowLoop
+~   vadd                cost3, cost3, ssd3
+    // increament pointers
+~   vim                 cpel, cpel, PCB_CURRENT_STRIDE
+~   vim                 ppel, ppel, PCB_REFERENCE_STRIDE
+
+
+    // sum 4x4 ssds horizontally
+    vxsum.{WorstSkippedChromaCost}  cost0, cost0, 0xff
+    vxsum.{WorstSkippedChromaCost}  cost1, cost1, 0xff
+    vxsum.{WorstSkippedChromaCost}  cost2, cost2, 0xff
+
+    // find max cost of 4x4 ssd and save
+    vmax                'WorstSkippedChromaCost, 'WorstSkippedChromaCost, cost0
+
+    // sum 4x4 ssds horizontally
+    vxsum.{WorstSkippedChromaCost}  cost3, cost3, 0xff
+
+    // decrement and loop
+    vjd.outerRow        outerRow, .outerRowLoop
+    // find max cost of 4x4 ssd and save
+~   vmax                'WorstSkippedChromaCost, 'WorstSkippedChromaCost, cost1
+~   vmax                'WorstSkippedChromaCost, 'WorstSkippedChromaCost, cost2
+~   vmax                'WorstSkippedChromaCost, 'WorstSkippedChromaCost, cost3
+
+
+    // return value in i0 & i1 = WorstSkippedChromaCost
+
+    // signal end of simd code
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0, [r0, 0]
+
+    // channels can only return 16 bit scalars
+    vsend              r0, WorstSkippedChromaCostLow, 0
+    vsend              r0, WorstSkippedChromaCostHigh, 1
+
+@   mov                 r1, Service_CalculateSkippedChromaCost
+    vsend               r0, r1, 63
+end
+
+endfunc
+
+
+
+//------------------------------------------------------------------------------
+// Name:          MakeLumaChromaPredictionInterError
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func MakeLumaChromaPredictionInterError
+    // function arguments
+
+begin
+    p16                 source_ptr
+    p16                 prediction_ptr
+    p16                 prediction_error_ptr
+
+    p16                 row
+
+    vec16               source0
+    vec16               source1
+    vec16               source2
+    vec16               source3
+
+    vec16               prediction0
+    vec16               prediction1
+    vec16               prediction2
+    vec16               prediction3
+
+    vec16               prediction_error0
+    vec16               prediction_error1
+    vec16               prediction_error2
+    vec16               prediction_error3
+
+    // setup arguments for GenerateIntra16x16Residual
+    vim                 source_ptr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y
+    vim                 prediction_ptr, CirBuf, MPO_PixelCoeffBuffer + PCB_REFERENCE_Y
+    vim                 prediction_error_ptr, CirBuf, MPO_PixelCoeffBuffer + PCB_RESIDUAL_Y
+
+
+    // setup loop counter
+    // 24 rows total, 2 rows per loop
+    vmovw               'row, (24/2)-1
+
+
+    // rowLoop start
+label rowLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, source_ptr, 0
+    vld64w              source1, source_ptr, 8
+    vld64w              source2, source_ptr, 16
+    vld64w              source3, source_ptr, 24
+
+    // load prediction (8 bits per pixel)
+    vld64w              prediction0, prediction_ptr, 0
+    vld64w              prediction1, prediction_ptr, 8
+    vld64w              prediction2, prediction_ptr, 16
+    vld64w              prediction3, prediction_ptr, 24
+
+    // calculate residual (9 bits stored in 16 bits per pixel)
+    vsubw               prediction_error0, source0, prediction0
+    vsubw               prediction_error1, source1, prediction1
+    vsubw               prediction_error2, source2, prediction2
+    vsubw               prediction_error3, source3, prediction3
+
+    // store residual (16 bits per pixel)
+    vst128              prediction_error0, prediction_error_ptr, 0
+    vst128              prediction_error1, prediction_error_ptr, 16
+    vst128              prediction_error2, prediction_error_ptr, 32
+    vst128              prediction_error3, prediction_error_ptr, 48
+
+    // decrement and loop
+    vjd.row             row, .rowLoop
+    // increament pointers
+~   vim                 source_ptr, source_ptr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 prediction_ptr, prediction_ptr, PCB_REFERENCE_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 prediction_error_ptr, prediction_error_ptr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+
+end
+
+endfunc
+
+
+// Select new macroblock type
+// bestInterCost	:		Best cost found for inter prediction (from ME via Arc)
+// cIdx				:		Circular buffer index
+// Calls either Arc function Service_UseInter or Service_UseIntra via channel
+func.f                  ChooseInterOrIntra
+    // Params ---------------------------
+    s32                 bestInterCost
+    p16                 cIdx
+    pubreg              bestInterCost, cIdx
+    // End Params -----------------------
+    s32:bestInterCost   BestIntraLumaCost
+    vec16               multiplier
+    p16                 aboveFM, leftFM, UseIntra, CurrentSkip
+    vec16               kIntra,kOne
+    s16                 kIntraMode
+    regmap
+    vld8w               'CurrentSkip, [CirBuf, MPO_MBCodingType]
+    vmvw                BestIntraLumaCost,VZERO
+    vld16               BestIntraLumaCost,[CirBuf, MPO_WorkArea_BestIntraLumaCost]
+    vld8w               'aboveFM,[CirBuf, MPO_AboveMB]
+    vld8w               'leftFM,[CirBuf, MPO_LeftMB]
+    via                 CurrentSkip, CurrentSkip, MBCT_H264_SKIPPED
+    vand                'aboveFM'leftFM, 'aboveFM'leftFM, MBNF_VALID
+    vmov                multiplier,16
+    vjp.CurrentSkip     .IsSkip
+~   vld8w.aboveFM       'aboveFM,[FixBuf, MPO_MBCodingType]
+~   vld8w.leftFM        'leftFM,[CirLeft, MPO_MBCodingType]
+~   vmovw               kIntra, MBCT_H264_INTRA16X16
+    vmov                kOne, 1
+    veqw                'aboveFM'leftFM, 'aboveFM'leftFM, kIntra
+    vsub.aboveFM        multiplier, multiplier, kOne
+    vsub.leftFM         multiplier, multiplier, kOne
+    vmul                BestIntraLumaCost, BestIntraLumaCost, multiplier
+    vasr                BestIntraLumaCost, BestIntraLumaCost, 4
+    vlt                 BestIntraLumaCost, BestIntraLumaCost, bestInterCost
+    vmovw               kIntraMode, MBCT_H264_INTRA16X16
+    viv                 UseIntra, BestIntraLumaCost             // Move to I reg
+    vjp.UseIntra        .CallIntra
+~   vst8.UseIntra       kIntraMode,[CirBuf, MPO_MBCodingType]
+~   vnop
+~   vnop
+label                   .IsSkip
+    vjp                 .Exit
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0, [r0, 0]
+@   mov                 r1, Service_UseInter
+~   vsend               r0, cIdx, 0
+~   vsend               r0, r1, 63
+~   vnop
+label CallIntra
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0, [r0, 0]
+@   mov                 r1, Service_UseIntra
+    vsend               r0, cIdx, 0
+    vsend               r0, r1, 63
+label Exit
+endfunc
+
+
+

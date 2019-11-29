@@ -1,0 +1,5 @@
+halVideoSampler.c:22:6:halVideoSampler_InternalDataEnableGenerator	16	static
+halVideoSampler.c:28:6:halVideoSampler_VideoMapping	16	static
+halVideoSampler.c:34:6:halVideoSampler_StuffingGy	16	static
+halVideoSampler.c:42:6:halVideoSampler_StuffingRcr	16	static
+halVideoSampler.c:50:6:halVideoSampler_StuffingBcb	16	static

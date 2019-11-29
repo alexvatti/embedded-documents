@@ -1,0 +1,8 @@
+video.c:31:5:video_Initialize	8	static
+video.c:61:5:video_ForceOutput	16	static
+video.c:70:5:video_ColorSpaceConverter	24	static
+video.c:150:5:video_FrameComposer	24	static
+video.c:206:5:video_VideoPacketizer	24	static
+video.c:272:5:video_VideoSampler	16	static
+video.c:330:5:video_VideoGenerator	24	static
+video.c:36:5:video_Configure	24	static

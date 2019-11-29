@@ -1,0 +1,2 @@
+cmd_dmatest.c:25:13:shikara_dma_cb	0	static
+cmd_dmatest.c:114:5:do_dma_m2m	32	static

@@ -1,0 +1,373 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+//    showstalls
+    setw                120
+    metaware
+    macrotable          LumaSubPelFilter,4
+    strict
+
+    include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#include "ArcMP4SDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+
+//------------------------------------------------------------------------------
+// Name:          CopyLumaPredToSDM
+// Purpose:       Copies the luma prediction from
+//                main memory to the current MPC pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyLumaPredToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, ME_REFERENCE_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 for chroma U and in r1 for chroma V
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+//    vdmawait          0,0
+    
+end
+
+endfunc
+
+func        CallBackDoLumaSubPelFilter
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_DoLumaSubPelFilter   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+endfunc
+
+
+
+//------------------------------------------------------------------------------
+// Name:          FilterLumamaPred
+// Purpose:       Filters Luma Prediction using simple bilinear interpolation
+// Arguments:     predBuf: Input buffer pointer
+//                outBuf : Output buffer pointer
+//                horFrac: half pel precision horizontally
+//                verFrac: half pel precision vertically
+//                rndCtrl: Rounding control parameter
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f FilterLumaPred
+    p16                 predBuf = i0
+    p16                 outBuf  = i1
+    p16                 horFrac = i2
+    p16                 verFrac = i10
+    p16                 rndCtrl = i3
+
+begin
+    p16                 subPel = i4
+    
+    vec16               lumaLane0
+    vec16               lumaLane1
+    vec16               lumaLane2
+    vec16               lumaLane3
+    vec16               lumaLane4
+    vec16               lumaLane5
+    vec16               lumaLane6
+    vec16               lumaLane7
+    vec16               lumaLane8
+    
+    vec16               lumaOffsetLane0
+    vec16               lumaOffsetLane1
+    vec16               lumaOffsetLane2
+    vec16               lumaOffsetLane3
+    vec16               lumaOffsetLane4
+    vec16               lumaOffsetLane5
+    vec16               lumaOffsetLane6
+    vec16               lumaOffsetLane7
+    vec16               lumaOffsetLane8
+    
+    // Load data to be filtered
+    vld64w              lumaLane0, [predBuf, 0*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaLane1, [predBuf, 1*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaLane2, [predBuf, 2*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaLane3, [predBuf, 3*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaLane4, [predBuf, 4*ME_REFERENCE_ARRAY_STRIDE]
+//  vld64w              lumaLane5, [predBuf, 5*ME_REFERENCE_ARRAY_STRIDE] <--)
+//  vld64w              lumaLane6, [predBuf, 6*ME_REFERENCE_ARRAY_STRIDE] <--> moved to jump delay slots below
+//  vld64w              lumaLane7, [predBuf, 7*ME_REFERENCE_ARRAY_STRIDE] <--)
+    
+    // If none of horFrac or verFrac is set then go straight to DMA out
+    // No filtering is to be performed
+    s16                 tmpFrac : horFrac
+    vor                 'tmpFrac, 'horFrac, 'verFrac
+    move16              subPel, tmpFrac
+    vjp.subPel          .Continue
+    vld64w              lumaLane5, [predBuf, 5*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaLane6, [predBuf, 6*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaLane7, [predBuf, 7*ME_REFERENCE_ARRAY_STRIDE]
+
+
+    vasrpwb             lumaLane0, lumaLane0, 0
+    vasrpwb             lumaLane1, lumaLane1, 0
+    vasrpwb             lumaLane2, lumaLane2, 0
+    vasrpwb             lumaLane3, lumaLane3, 0
+    vasrpwb             lumaLane4, lumaLane4, 0
+    vjp                 .Output
+    vasrpwb             lumaLane5, lumaLane5, 0
+    vasrpwb             lumaLane6, lumaLane6, 0
+    vasrpwb             lumaLane7, lumaLane7, 0
+    
+label Continue    
+    // If horFilter isn't set go straight to the Vertical filtering section
+    vjp!horFrac         .VerFilter
+    
+    // If only horFrac is set then perform horizontal filtering
+    // Load in extra column to the right of the 8x8 block
+    vld64w              lumaOffsetLane0, [predBuf, 0*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane1, [predBuf, 1*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane2, [predBuf, 2*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane3, [predBuf, 3*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane4, [predBuf, 4*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane5, [predBuf, 5*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane6, [predBuf, 6*ME_REFERENCE_ARRAY_STRIDE+8]
+    vld64w              lumaOffsetLane7, [predBuf, 7*ME_REFERENCE_ARRAY_STRIDE+8]
+    
+    vmr1w               lumaOffsetLane0, lumaOffsetLane0, lumaLane0
+    vmr1w               lumaOffsetLane1, lumaOffsetLane1, lumaLane1
+    vmr1w               lumaOffsetLane2, lumaOffsetLane2, lumaLane2
+    vmr1w               lumaOffsetLane3, lumaOffsetLane3, lumaLane3
+    vmr1w               lumaOffsetLane4, lumaOffsetLane4, lumaLane4
+//  vmr1w               lumaOffsetLane5, lumaOffsetLane5, lumaLane5 <--)
+//  vmr1w               lumaOffsetLane6, lumaOffsetLane6, lumaLane6 <--> moved to jump delay slots below
+//  vmr1w               lumaOffsetLane7, lumaOffsetLane7, lumaLane7 <--)
+    
+    // If verFrac is also set then go to 2D filter
+    // The above loads and VMRs aren't wasted as they are also needed for
+    // the 2D case anyway
+    vjp.verFrac         .2dFilter
+    vmr1w               lumaOffsetLane5, lumaOffsetLane5, lumaLane5
+    vmr1w               lumaOffsetLane6, lumaOffsetLane6, lumaLane6
+    vmr1w               lumaOffsetLane7, lumaOffsetLane7, lumaLane7
+    
+    //actual horizontal filter
+    vaddw               lumaLane0, lumaLane0, lumaOffsetLane0
+    vaddw               lumaLane1, lumaLane1, lumaOffsetLane1
+    vaddw               lumaLane2, lumaLane2, lumaOffsetLane2
+    vaddw               lumaLane3, lumaLane3, lumaOffsetLane3
+    vaddw               lumaLane4, lumaLane4, lumaOffsetLane4
+//  vaddw               lumaLane5, lumaLane5, lumaOffsetLane5 <--)
+//  vaddw               lumaLane6, lumaLane6, lumaOffsetLane6 <--> moved to jump delay slots below
+//  vaddw               lumaLane7, lumaLane7, lumaOffsetLane7 <--)
+        
+    vjp                 .RoundAndShift
+    vaddw               lumaLane5, lumaLane5, lumaOffsetLane5
+    vaddw               lumaLane6, lumaLane6, lumaOffsetLane6
+    vaddw               lumaLane7, lumaLane7, lumaOffsetLane7
+    
+    // If only verFilter is set then load the extra lane at the bottom of the block
+label VerFilter
+    vld64w              lumaLane8, [predBuf, 8*ME_REFERENCE_ARRAY_STRIDE]
+    // perform actual vertical filter
+    vaddw               lumaLane0, lumaLane0, lumaLane1
+    vaddw               lumaLane1, lumaLane1, lumaLane2
+    vaddw               lumaLane2, lumaLane2, lumaLane3
+    vaddw               lumaLane3, lumaLane3, lumaLane4
+    vaddw               lumaLane4, lumaLane4, lumaLane5
+    vaddw               lumaLane5, lumaLane5, lumaLane6
+    vaddw               lumaLane6, lumaLane6, lumaLane7
+    vaddw               lumaLane7, lumaLane7, lumaLane8
+    
+label RoundAndShift
+    vsubw               lumaLane0, lumaLane0, rndCtrl
+    vsubw               lumaLane1, lumaLane1, rndCtrl
+    vsubw               lumaLane2, lumaLane2, rndCtrl
+    vsubw               lumaLane3, lumaLane3, rndCtrl
+    vsubw               lumaLane4, lumaLane4, rndCtrl
+    vsubw               lumaLane5, lumaLane5, rndCtrl
+    vsubw               lumaLane6, lumaLane6, rndCtrl
+    vsubw               lumaLane7, lumaLane7, rndCtrl
+
+    vasrrpwb            lumaLane0, lumaLane0, 1
+    vasrrpwb            lumaLane1, lumaLane1, 1
+    vasrrpwb            lumaLane2, lumaLane2, 1
+    vasrrpwb            lumaLane3, lumaLane3, 1
+    vasrrpwb            lumaLane4, lumaLane4, 1
+    vasrrpwb            lumaLane5, lumaLane5, 1
+    vasrrpwb            lumaLane6, lumaLane6, 1
+    vasrrpwb            lumaLane7, lumaLane7, 1
+    
+    // Go to Output
+    vjp                 .Output
+
+    
+label 2dFilter
+    vld64w              lumaLane8, [predBuf, 8*ME_REFERENCE_ARRAY_STRIDE]
+    vld64w              lumaOffsetLane8, [predBuf, 8*ME_REFERENCE_ARRAY_STRIDE+8]
+    vmr1w               lumaOffsetLane8, lumaOffsetLane8, lumaLane8
+    
+    // 2D filtering
+    vaddw               lumaLane0, lumaLane0, lumaOffsetLane0
+    vaddaw              lumaLane0, lumaLane1, lumaOffsetLane1
+    vaddw               lumaLane1, lumaLane1, lumaOffsetLane1
+    vaddaw              lumaLane1, lumaLane2, lumaOffsetLane2
+    vaddw               lumaLane2, lumaLane2, lumaOffsetLane2
+    vaddaw              lumaLane2, lumaLane3, lumaOffsetLane3
+    vaddw               lumaLane3, lumaLane3, lumaOffsetLane3
+    vaddaw              lumaLane3, lumaLane4, lumaOffsetLane4
+    vaddw               lumaLane4, lumaLane4, lumaOffsetLane4
+    vaddaw              lumaLane4, lumaLane5, lumaOffsetLane5
+    vaddw               lumaLane5, lumaLane5, lumaOffsetLane5
+    vaddaw              lumaLane5, lumaLane6, lumaOffsetLane6
+    vaddw               lumaLane6, lumaLane6, lumaOffsetLane6
+    vaddaw              lumaLane6, lumaLane7, lumaOffsetLane7
+    vaddw               lumaLane7, lumaLane7, lumaOffsetLane7
+    vaddaw              lumaLane7, lumaLane8, lumaOffsetLane8
+
+    vsubw               lumaLane0, lumaLane0, rndCtrl
+    vsubw               lumaLane1, lumaLane1, rndCtrl
+    vsubw               lumaLane2, lumaLane2, rndCtrl
+    vsubw               lumaLane3, lumaLane3, rndCtrl
+    vsubw               lumaLane4, lumaLane4, rndCtrl
+    vsubw               lumaLane5, lumaLane5, rndCtrl
+    vsubw               lumaLane6, lumaLane6, rndCtrl
+    vsubw               lumaLane7, lumaLane7, rndCtrl
+
+    vasrrpwb            lumaLane0, lumaLane0, 2
+    vasrrpwb            lumaLane1, lumaLane1, 2
+    vasrrpwb            lumaLane2, lumaLane2, 2
+    vasrrpwb            lumaLane3, lumaLane3, 2
+    vasrrpwb            lumaLane4, lumaLane4, 2
+    vasrrpwb            lumaLane5, lumaLane5, 2
+    vasrrpwb            lumaLane6, lumaLane6, 2
+    vasrrpwb            lumaLane7, lumaLane7, 2
+
+label Output
+    vst64              lumaLane0, [outBuf, 0*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane1, [outBuf, 1*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane2, [outBuf, 2*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane3, [outBuf, 3*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane4, [outBuf, 4*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane5, [outBuf, 5*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane6, [outBuf, 6*ME_REFERENCE_ARRAY_STRIDE]
+    vst64              lumaLane7, [outBuf, 7*ME_REFERENCE_ARRAY_STRIDE]
+
+end
+
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          StoreFilteredLumaPred
+// Purpose:       
+//                
+// Arguments:     src
+//                dest
+//                
+// Return Value:  void
+//------------------------------------------------------------------------------
+func StoreFilteredLumaPred
+    p16             src
+    p16             dst
+begin
+    vec16           v1
+    vec16           v2
+    vec16           v3
+    vec16           v4
+    
+    vld128          v1, [src, 0*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 1*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 2*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 3*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 0*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 1*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 2*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 3*PCB_REFERENCE_STRIDE]
+    
+    vld128          v1, [src, 4*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 5*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 6*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 7*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 4*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 5*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 6*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 7*PCB_REFERENCE_STRIDE]
+    
+    vld128          v1, [src, 8*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 9*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 10*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 11*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 8*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 9*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 10*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 11*PCB_REFERENCE_STRIDE]
+    
+    vld128          v1, [src, 12*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v2, [src, 13*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v3, [src, 14*ME_REFERENCE_ARRAY_STRIDE]
+    vld128          v4, [src, 15*ME_REFERENCE_ARRAY_STRIDE]
+    vst128          v1, [dst, 12*PCB_REFERENCE_STRIDE]
+    vst128          v2, [dst, 13*PCB_REFERENCE_STRIDE]
+    vst128          v3, [dst, 14*PCB_REFERENCE_STRIDE]
+    vst128          v4, [dst, 15*PCB_REFERENCE_STRIDE]
+end
+endfunc

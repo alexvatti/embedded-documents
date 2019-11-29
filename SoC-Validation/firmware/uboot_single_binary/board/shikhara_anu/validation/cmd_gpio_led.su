@@ -1,0 +1,5 @@
+cmd_gpio_led.c:63:5:do_gpio_output_low	8	static
+cmd_gpio_led.c:40:5:do_gpio_output_high	8	static
+cmd_gpio_led.c:8:5:do_gpio_led	8	static
+cmd_gpio_led.c:86:15:gpio_port_read	0	static
+cmd_gpio_led.c:120:5:do_gpio_test_input	16	static

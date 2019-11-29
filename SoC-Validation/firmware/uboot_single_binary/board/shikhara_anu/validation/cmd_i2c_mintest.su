@@ -1,0 +1,4 @@
+cmd_i2c_mintest.c:124:5:do_i2c_eeprom_test	296	static
+cmd_i2c_mintest.c:57:5:i2c_mintest	48	dynamic
+cmd_i2c_mintest.c:92:5:do_i2c_mintest	40	static
+cmd_i2c_mintest.c:85:5:i2c_post	16	static

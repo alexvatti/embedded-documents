@@ -1,0 +1,2 @@
+cmd_raw_videoplayer.c:175:12:do_rawvideoplayer_help	8	static
+cmd_raw_videoplayer.c:30:12:do_rawvideoplayer	96	static

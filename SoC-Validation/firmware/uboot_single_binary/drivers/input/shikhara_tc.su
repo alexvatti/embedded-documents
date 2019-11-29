@@ -1,0 +1,6 @@
+shikhara_tc.c:17:5:spi_ts_xfer	40	static
+shikhara_tc.c:41:5:start_xfer	24	static
+shikhara_tc.c:72:6:get_position	16	static
+shikhara_tc.c:90:20:touch_init	40	static
+shikhara_tc.c:144:5:touch_read	24	static
+shikhara_tc.c:176:6:touch_release	0	static

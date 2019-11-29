@@ -1,0 +1,6 @@
+cmd_spi_minitest.c:61:5:apSSP_Wait	8	static
+cmd_spi_minitest.c:78:5:apSSP_flashID	24	static
+cmd_spi_minitest.c:114:5:spimintest_init	0	static
+cmd_spi_minitest.c:149:5:do_spi_flashid	8	static
+cmd_spi_minitest.c:134:5:spi_mintest	8	static
+cmd_spi_minitest.c:144:5:spi_post	0	static

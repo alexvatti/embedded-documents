@@ -1,0 +1,4 @@
+cmd_sramtest.c:25:5:do_sram_init	0	static
+cmd_sramtest.c:15:5:sram_init	0	static
+cmd_sramtest.c:40:5:validation_sram_test	8	static
+cmd_sramtest.c:91:5:do_sram_test	8	static

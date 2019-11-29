@@ -1,0 +1,5 @@
+
+H264Transform.o:	\
+	./H264DecoderLib/H264Common/H264Transform.cpp \
+	./H264DecoderLib/H264Common/H264Warnings.h \
+	./H264DecoderLib/H264Common/H264Transform.h 

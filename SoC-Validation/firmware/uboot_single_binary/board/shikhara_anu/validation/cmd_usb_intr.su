@@ -1,0 +1,2 @@
+cmd_usb_intr.c:12:6:temp_intr_hndler	8	static
+cmd_usb_intr.c:18:5:do_intr_usb_test	24	static

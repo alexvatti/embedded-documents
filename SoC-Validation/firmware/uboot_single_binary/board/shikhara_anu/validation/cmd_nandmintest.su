@@ -1,0 +1,2 @@
+cmd_nandmintest.c:39:5:nand_post	16	static
+cmd_nandmintest.c:90:5:do_nand_mintest	24	static

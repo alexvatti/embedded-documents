@@ -1,0 +1,3 @@
+cmd_spi_loopbacktest.c:58:5:apSSP_loopback	8	static
+cmd_spi_loopbacktest.c:77:5:spitest_init	0	static
+cmd_spi_loopbacktest.c:96:5:do_spi_loopback	8	static

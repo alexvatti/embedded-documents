@@ -1,0 +1,4 @@
+shikhara_dw_mmc_core.c:356:13:dwmci_set_ios	24	static
+shikhara_dw_mmc_core.c:46:12:dwmci_send_cmd	16	static
+shikhara_dw_mmc_core.c:383:12:dwmci_init	8	static
+shikhara_dw_mmc_core.c:418:5:add_dwmci	24	static

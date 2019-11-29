@@ -1,0 +1,2 @@
+
+hcac -arc700 -Hnocrt -Xtimer0 -Xvraptor -o -e _reset ../boot/ARC_ROM_VECTORS_IPC.s ../boot/crt1.s ../boot/arc_main.c ../boot/crti.s main.c ../drivers/shikhara_uart.c -A ../linker/linkage_asic.txt -o APP_IPC.out  -m > APP_IPC.map

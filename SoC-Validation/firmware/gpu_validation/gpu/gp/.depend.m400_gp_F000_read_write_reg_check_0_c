@@ -1,0 +1,3 @@
+m400_gp_F000_read_write_reg_check_0_c.o: \
+ m400_gp_F000_read_write_reg_check_0_c.c \
+ m400_gp_F000_read_write_reg_check_0_c.h

@@ -1,0 +1,17 @@
+
+Kernel Compilation steps:
+------------------------
+Download and extract the linux source and give the following commands:
+
+1. make menuconfig and select save.
+2. make modules
+3. make modules_install
+4. make install
+
+usb_drd_utility compilation:
+---------------------------
+
+compile the module by giving the make in the terminal.
+
+
+

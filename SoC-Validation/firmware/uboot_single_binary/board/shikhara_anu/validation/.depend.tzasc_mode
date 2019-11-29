@@ -1,0 +1,9 @@
+tzasc_mode.o: tzasc_mode.S \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/config.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/config_cmd_defaults.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/config_defaults.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/configs/anusoc.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/asm/arch/shikhara_map.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/asm/arch/shikhara_clock.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/config_cmd_default.h \
+ /home/engineer/BSP/Shikhara-SOC/Shikhara_FW_Release_OCT_26_2017/firmware/uboot_single_binary/include/asm/config.h

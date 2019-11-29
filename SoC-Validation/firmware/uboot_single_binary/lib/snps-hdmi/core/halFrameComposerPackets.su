@@ -1,0 +1,8 @@
+halFrameComposerPackets.c:25:6:halFrameComposerPackets_QueuePriorityHigh	16	static
+halFrameComposerPackets.c:31:6:halFrameComposerPackets_QueuePriorityLow	16	static
+halFrameComposerPackets.c:37:6:halFrameComposerPackets_MetadataFrameInterpolation	16	static
+halFrameComposerPackets.c:43:6:halFrameComposerPackets_MetadataFramesPerPacket	16	static
+halFrameComposerPackets.c:49:6:halFrameComposerPackets_MetadataLineSpacing	16	static
+halFrameComposerPackets.c:55:6:halFrameComposerPackets_AutoSend	16	static
+halFrameComposerPackets.c:61:6:halFrameComposerPackets_ManualSend	16	static
+halFrameComposerPackets.c:67:6:halFrameComposerPackets_DisableAll	8	static

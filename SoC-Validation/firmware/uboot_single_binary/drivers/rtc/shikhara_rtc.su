@@ -1,0 +1,4 @@
+shikhara_rtc.c:11:6:rtc_init	0	static
+shikhara_rtc.c:21:6:rtc_reset	0	static
+shikhara_rtc.c:31:5:rtc_set	16	static
+shikhara_rtc.c:55:5:rtc_get	8	static

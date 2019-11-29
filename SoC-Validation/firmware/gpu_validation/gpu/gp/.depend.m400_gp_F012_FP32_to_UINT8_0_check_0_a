@@ -1,0 +1,3 @@
+m400_gp_F012_FP32_to_UINT8_0_check_0_a.o: \
+ m400_gp_F012_FP32_to_UINT8_0_check_0_a.c \
+ m400_gp_F012_FP32_to_UINT8_0_check_0_a.h

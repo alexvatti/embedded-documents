@@ -1,0 +1,3 @@
+shikhara_dw_mmc.c:34:14:get_shikhara_mmc_clk	0	static
+shikhara_dw_mmc.c:24:6:shikhara_enable_dwmmc_clock	0	static
+shikhara_dw_mmc.c:97:5:shikhara_dwmci_init	16	static

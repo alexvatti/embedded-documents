@@ -1,0 +1,2 @@
+cmd_tzasc.c:39:5:do_tzasc	16	static
+cmd_tzasc.c:85:5:tzasc_ns	16	static

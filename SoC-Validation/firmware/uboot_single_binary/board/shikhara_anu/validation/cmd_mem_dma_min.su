@@ -1,0 +1,4 @@
+cmd_mem_dma_min.c:62:5:dmatest_ns	24	static
+cmd_mem_dma_min.c:183:5:dmatest_sram	24	static
+cmd_mem_dma_min.c:302:5:dmatest_secure	24	static
+cmd_mem_dma_min.c:430:5:do_dmatest	16	static

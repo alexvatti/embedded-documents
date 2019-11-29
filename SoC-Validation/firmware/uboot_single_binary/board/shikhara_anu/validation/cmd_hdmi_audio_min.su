@@ -1,0 +1,2 @@
+cmd_hdmi_audio_min.c:83:5:configure_audio	0	static
+cmd_hdmi_audio_min.c:98:12:do_audio	24	static

@@ -1,0 +1,80 @@
+Dear Jean,
+
+Thanks for the inputs & valuable support
+
+Based on the inputs,we have made changes/corrected
+
+1.We are referring and using the code from V0.2 only
+
+(Truly Input: -TFT8001280-12-E application noteV0.2 is right code for module)
+
+2. Corrected the Reset Pin
+(Truly Input: About reset pin， Please check the use condition  whether satisfied  with IC spec (PAGE 154))
+3.  VPP Pin is open now
+
+(Truly Input: Let  VPP pin NC,don't connect  anything.  )
+
+4. We did the BIST Pattern Test Successfully,
+
+By writing to Page 0,Register Address 0xB2h, the value 0x4A( BIST Enable) , we are seeing the color Pattern test on LCD Panel
+
+BIST Pattern(Page Number 141 of HX8260-A_DS_v01_141127.pdf)
+When register BIST_EN is trigger to high, then HX8260-A will leave normal operation
+mode and starts to generate the BIST pattern to LCD panel without MIPI input signals.
+
+
+But, We are seeking your inputs , on the Platform side at high level , not at Regisret or bit level
+
+1. we are configuring the LCD Panel Pixel format as RGB24 using set_pixel_format command, this is missing in the initilization sequence
+    code: TC358768_DCS_write_1A_1P(0x3A,0x70);
+
+2.we have set_address_mode (0x36h), set_page_address(0x2Bh),set_column_address(0x2Ah), whethe these commands are required to sned to HX8260(LCD)
+
+3.Our MIPI Host contoller can support/operate at 1Gbps/lane(1000Mbps/lane) & getting the clcok 500MHZ, but HX8260 Can operate at  (480Mbps/lane), do we need to change/down grade clock?
+
+4.How much  the byte clock need to be configured? , we are using 125MHZ ( Nothing but 500/8 = 125MHZ)
+
+5.In the initialization code, regardign the lane configuration
+   TC358768_DCS_write_1A_1P(0xBB,0xE8); it shows that lanes are configured 1,Please correct me, if I am wrong
+
+6.we have the MIPI Host controller, saying about LCD Parameters, at high level , Please look and suggest if any thing went wrong
+
+		#define DSI_LANE_BYTE_CLOCK 125000000
+  		.no_of_lanes                    = 4,
+                .virtual_channel                = 0,
+                .video_mode                     = VIDEO_BURST_WITH_SYNC_PULSES,
+                 .byte_clock                     = DSI_LANE_BYTE_CLOCK/1000,    //KHz
+                .pixel_clock                    = 71900,	//KHz		
+                .color_coding                   = COLOR_CODE_24BIT,
+                .is_18_loosely                  = 0,
+                .data_en_polarity               = 0, 				
+                .h_polarity                     = 0, 				
+                .h_active_pixels                = 800, 			
+                .h_sync_pixels                  = 24, 				
+                .h_back_porch_pixels            = 24, 				
+                .h_total_pixels                 = 920, 			
+                .v_polarity                     = 0, 				
+                .v_active_lines                 = 1280, 				
+                .v_sync_lines                   = 2,
+                .v_back_porch_lines             = 10, 				
+                .v_total_lines                  = 1304, 
+
+7. we are usign the video mode with BURST, Whether it can be suppoted by the Panel.
+
+8. Please share the reference platform working code, that will helpful to resolve the issues.
+
+
+
+Please consider the open points , that has to be addressed & solved , in order to move forward
+
+    
+1.Our MIPI Host contoller can support/operate at 1Gbps/lane(1000Mbps/lane) , but HX8260 Can operate at  (480Mbps/lane) , 
+
+(Action: MIPI Host side we need to down grade )
+    Based on the Mbps/lane , we have calculated  lane byte clock  or simply byte clock , Please provide the formula (Seeking info from ASIC Team).  (Action: Based on the calculations , need to reprogram the set of registers on MIPI Host)
+    We have calculated the pixel clock , based on the Pixel format, Ex: 24 Bit/Pixel , but now we are moving to  16 Bit/Pixel & 18 Bit/Pixel , Please refer Page Number: 67 in HX8260-A_DS_v01_141127.pdf (Information for you, what are the pixel format our Panel can support) (Action: Based on the calculations , need to reprogram the set of registers on MIPI Host)
+    I have no idea about   hsync polarity, vsync polarity ,data en polarity , shutdown polarity ,color mode polarity , Please refer Page Number: 140 in DWC_mipi_dsi_host_databook.pdf( Action: I can look into the reference platform IMX6)
+    Need to find the address of Panel to configure the Pixel format( I am looking into HX8260-A_DS_v01_141127.pdf) .(Action: Need to depend on the Reference Platform HX83XX)
+
+
+

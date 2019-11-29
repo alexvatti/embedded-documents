@@ -1,0 +1,5 @@
+shikhara_csi_dsi_helper.c:217:5:rgb565torgb888_conversion	12	static
+shikhara_csi_dsi_helper.c:331:5:color_conversion	0	static
+shikhara_csi_dsi_helper.c:43:6:do_csi_bridge_dump	8	static
+shikhara_csi_dsi_helper.c:21:6:do_csi_dump	8	static
+shikhara_csi_dsi_helper.c:271:5:rgb565torgb888	12	static

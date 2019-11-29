@@ -1,0 +1,137 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// ARC International.                                              //
+
+//------------------------------------------------------------------------------
+// File:        ArcChannel_MPA.sss
+// Description: 
+//------------------------------------------------------------------------------
+
+
+
+//------------------------------------------------------------------------------
+// ScanMP settings
+showstalls
+setw                108
+metaware
+strict
+
+macrotable ArcChannel, 3
+
+
+
+//------------------------------------------------------------------------------
+// Includes
+#include "ArcMacroRecordSettings.h"
+
+
+
+//------------------------------------------------------------------------------
+// Macros
+
+//------------------------------------------------------------------------------
+// Name:      Generate_ME_SDMResponse
+// Purpose:   Generate a fake ME channel response for the SDM (first) channel
+//            response
+// Arguments: intraValidFlag = 2 bit flag indicating which neighbour MBs are
+//            intra
+//            skipMv = skipped motion components
+// Returns:   void
+//------------------------------------------------------------------------------
+func Generate_ME_SDMResponse
+    // function arguments
+    p16                 intraValidFlag = i0
+    pubreg              intraValidFlag
+    p16                 skipMv = i1
+    pubreg              skipMv
+
+begin
+
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+
+    // send channel commands
+    vsendi              r0, i0, 0
+    vsendi              r0, i1, 1
+
+@   mov                 r1, Service_ME_SDMResponse 
+    vsendr              r0, r1, 63 // channel number not used at present
+
+end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:      Generate_ME_SkipResponse
+// Purpose:   Generate a fake ME channel response for the skip (second) channel
+//            response
+// Arguments: cost = skipped cost (sad)
+//            blkPattern = block pattern flag
+// Returns:   void
+//------------------------------------------------------------------------------
+func Generate_ME_SkipResponse
+    // function arguments
+    p16                 cost = i0
+    pubreg              cost
+    p16                 blkPattern = i1
+    pubreg              blkPattern
+
+begin
+
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+
+    // send channel commands
+    vsendi              r0, i0, 0
+    vsendi              r0, i1, 1
+
+@   mov                 r1, Service_ME_SkipResponse
+    vsendr              r0, r1, 63 // channel number not used at present
+
+end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:      Generate_ME_InterResponse
+// Purpose:   Generate a fake ME channel response for the inter (second) channel
+//            response
+// Arguments: cost = inter cost
+//            blkPattern = block pattern flag
+// Returns:   void
+//------------------------------------------------------------------------------
+func Generate_ME_InterResponse
+    // function arguments
+    p16                 cost = i0
+    pubreg              cost
+    p16                 blkPattern = i1
+    pubreg              blkPattern
+
+begin
+
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+
+    // send channel commands
+    vsendi              r0, i0, 0
+    vsendi              r0, i1, 1
+
+@   mov                 r1, Service_ME_InterResponse
+    vsendr              r0, r1, 63 // channel number not used at present
+
+end
+
+endfunc

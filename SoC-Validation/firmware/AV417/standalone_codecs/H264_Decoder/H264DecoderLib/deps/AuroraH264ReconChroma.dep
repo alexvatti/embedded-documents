@@ -1,0 +1,8 @@
+
+AuroraH264ReconChroma.o:	\
+	./H264DecoderLib/H264SIMDDec/AuroraH264ReconChroma.cpp \
+	./H264DecoderLib/H264SIMDDec/ARCMedia.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264Dec.h \
+	./H264DecoderLib/H264SIMDDec/AuroraRecMgr.h \
+	./H264DecoderLib/H264Common/H264Tables.h \
+	./H264DecoderLib/H264Common/H264EnumTypes.h 

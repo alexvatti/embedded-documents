@@ -1,0 +1,5 @@
+halAudioSpdif.c:17:6:halAudioSpdif_ResetFifo	8	static
+halAudioSpdif.c:23:6:halAudioSpdif_NonLinearPcm	16	static
+halAudioSpdif.c:29:6:halAudioSpdif_DataWidth	16	static
+halAudioSpdif.c:35:6:halAudioSpdif_InterruptMask	16	static
+halAudioSpdif.c:41:6:halAudioSpdif_InterruptPolarity	16	static

@@ -1,0 +1,1732 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+//showstalls
+setw                120
+metaware
+macrotable          Transform_Buffers,20
+
+include "../ARC/SIMD_ABI.ii"
+strict
+#include "ArcMPC.h"
+#include "ArcSDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Sets the quantization values for each macroblock
+// Takes sliceType, chromaQpIndexOffset as the parameters
+
+func                    SetupQuantValues
+    // Params -----------
+    s16                 SliceType : i3
+    s16                 ChromaQpIndexOffset : i0
+
+    // End params -------
+
+    p16                 SDMAddr = i8
+    s16                 LumaDiv : SDMAddr
+    // Params -----------
+    s16                 QuantVal : LumaDiv
+    // End params -------
+    s16                 LumaMod : LumaDiv
+    s16                 LumaShiftNormal : LumaDiv
+    s16                 ChromaQPIndex:QuantVal
+    s16                 ChromaQp : LumaDiv
+    s16                 ChromaDiv : ChromaQp
+    s16                 ChromaMod : ChromaQp
+    s16                 ChromaShift : ChromaQp
+
+    s16                 MBCodingType : SliceType
+    s16                 H264ISlice : SliceType
+    s16                 H264Intra16x16 : SliceType
+
+    p32                 ForceAddr = k8
+    s32                 TempAddr : ForceAddr
+    s32                 WriteAddr: TempAddr
+    s16                 ChromaF : i2
+    s16                 LumaF : i2
+    s32                 Lumamod32 : ForceAddr
+    s32                 ChromaMod32 : ForceAddr
+    s32                 Table
+
+    s32                 WriteAddr1: TempAddr
+
+    p16                 SDMAddrT = i6
+
+    p16					SDMAddr1
+
+    pubreg              SliceType, ChromaQpIndexOffset, QuantVal
+
+    // Calculate LumaF and Lumashift
+
+    // Store Quant value
+    // The following instructions can be avoided if table look up method is used
+    // LumaDiv calculation
+    vmulw               LumaDiv, QuantVal, 43
+     // Store Quant value
+    vst8               QuantVal, [CirBuf, MPO_QuantValue]
+    vmovw               'SDMAddr1, LUMA_SHIFT_NORMAL
+
+    vasrw               LumaDiv, LumaDiv, 8
+    vmovw               'SDMAddr, LUMA_DIV
+
+    // LumaMod Calculation
+    vmulw               LumaMod, LumaDiv, 6
+    
+     // Store to WorkAreaSDM->LumaDiv
+    vst16               LumaDiv, [SDMAddr, 0]
+    
+    vmulw               LumaDiv, LumaDiv, 2
+    vmovw               'SDMAddr,LUMA_CHROMA_F
+    vaddw               'SDMAddr,'SDMAddr,'LumaDiv
+    vld16               LumaF, [SDMAddr, 0]
+    
+    vmovw               'SDMAddr, LUMA_F
+    vaddw               ChromaQPIndex, QuantVal, ChromaQpIndexOffset
+    vsubw               LumaMod, QuantVal, LumaMod
+    vst16               LumaF, [SDMAddr, 0]
+    
+	vmaxw               ChromaQPIndex, ChromaQPIndex, 0
+	// Needed as now it is stored as 16 bit array
+    vmulw               LumaMod, LumaMod, 32
+
+
+
+
+    // Chroma calculations
+    // CLIP if less than 0 to 0
+    
+
+
+
+    // Clip if more than 50 to 50
+    vminw               ChromaQPIndex, ChromaQPIndex, 50
+	 
+	vmovw               'SDMAddr, SDMOF_h264_quantiser_chroma_mapping_table
+
+    vaddw                'SDMAddr, 'SDMAddr, 'ChromaQPIndex
+	
+	vld8w               ChromaQp, [SDMAddr, 0]
+	
+	vmovw               'SDMAddr, CHROMA_DIV
+	
+	vmovw                'TempAddr, SDMOF_h264_frame_scan_inverse_quantiser_table
+
+    // ChromaDiv calculation
+    vmulw               ChromaDiv, ChromaQp, 43
+ 	vaddw                'WriteAddr,'TempAddr,'LumaMod
+ 	 vmovw               'SDMAddrT, LUMA_INVERSE_QUANT_TABLE
+    vasrw               ChromaDiv, ChromaDiv, 8
+ 
+
+    // ChromaMod Calculation
+    vmulw               ChromaMod, ChromaDiv, 6
+
+	 // Store to WorkAreaSDM->ChromaDiv
+    vst16               ChromaDiv, [SDMAddr, 0]
+    
+    vmulw               ChromaDiv, ChromaDiv, 2
+    vmovw               'SDMAddr,LUMA_CHROMA_F
+    vst16               WriteAddr, [SDMAddrT, 0]
+    vaddw               'SDMAddr,'SDMAddr,'ChromaDiv
+    vld16               ChromaF, [SDMAddr, 0]
+    
+    vmovw               'SDMAddr, CHROMA_F
+    vsubw               ChromaMod, ChromaQp, ChromaMod
+    vmulw               ChromaMod, ChromaMod, 32
+    vst16               ChromaF, [SDMAddr, 0]
+    
+    vmovw               'SDMAddrT, CHROMA_INVERSE_QUANT_TABLE
+
+ 	vaddw              WriteAddr,'TempAddr,'ChromaMod
+	vmovw               'TempAddr, SDMOF_h264_frame_scan_quantiser_table
+	
+    vaddw               'WriteAddr1,'TempAddr,'LumaMod
+    vst16               WriteAddr, [SDMAddrT, 0]
+    vmovw               'SDMAddrT, LUMA_QUANT_TABLE
+
+
+	vmovw               'SDMAddr, CHROMA_QUANT_TABLE
+
+    vaddw               'WriteAddr,'TempAddr,'ChromaMod
+    vst16               WriteAddr1, [SDMAddrT, 0]
+    vst16               WriteAddr, [SDMAddr, 0]
+
+endfunc
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Does the forward hadamard transform for luma DC
+// Sends channel reply
+
+func                    TransformQuantiseLumaDC
+    // Params -----------
+
+    // End params -------
+
+    p16                 LumaShiftNormal
+    p16                 Address = i8
+    p16                 QuantVal
+    p16                 LumaF
+    p16                 BuffStart               // Start of Luma DC coefficients
+    vec32               LumaQuant = vr06
+    vec32				LumaDiv = vr07
+    p16					AddressTemp
+
+
+    // Load LUMA SHIFT
+    vmovw               'Address, LUMA_DIV
+    vim                 BuffStart, CirBuf, MPO_Y_DC_CoeffStore0
+    vld16                LumaDiv, [Address,0]
+
+    // Load LUMA rounding factor
+    vmovw               'Address,LUMA_F
+    vmovw               'AddressTemp, LUMA_QUANT_TABLE
+    
+    vld16                'LumaF, [Address,0]
+    vaddw.1             'LumaShiftNormal, LumaDiv, 1
+    
+
+    // Load LUMA QUANT factor
+    vld16               'AddressTemp, [AddressTemp,0]
+ 
+
+
+  begin
+    vec16               LumaDCLane0 = vr02
+    vec16               LumaDCLane1 = vr03
+    vec16               LumaDCLane2 = vr04
+    vec16               LumaDCLane3 = vr05
+
+    // load input data
+    vld64               LumaDCLane0,[BuffStart, 0]
+    vld64               LumaDCLane2,[BuffStart, 16]
+    vld64               LumaDCLane1,[BuffStart, 8]
+    vld64               LumaDCLane3,[BuffStart, 24]
+    vld16               'QuantVal, [AddressTemp,0]
+    
+
+    // Froward Transform
+    // apply verical transform
+    // stage 0
+    vaddsuw             LumaDCLane0, LumaDCLane2
+    vaddsuw             LumaDCLane1, LumaDCLane3
+    vmivw.255             LumaQuant, QuantVal
+
+    //stage 1
+    vaddsuw             LumaDCLane0, LumaDCLane1
+    vaddsuw             LumaDCLane2, LumaDCLane3
+
+    // Right shift each the vertical transform
+    vasrw               LumaDCLane0, LumaDCLane0, 1
+    vasrw               LumaDCLane1, LumaDCLane1, 1
+    vasrw               LumaDCLane2, LumaDCLane2, 1
+    vasrw               LumaDCLane3, LumaDCLane3, 1
+  end
+
+  begin
+    // Rename the lanes as after the vaddsuw operation
+    // LumaDCLanes move to different vector registers then the originally loaded.
+    vec16               LumaDCLane0 = vr02
+    vec16               LumaDCLane1 = vr04
+    vec16               LumaDCLane2 = vr05
+    vec16               LumaDCLane3 = vr03
+
+    // transpose matrix
+    vexch2              LumaDCLane0, LumaDCLane2
+    vexch2              LumaDCLane1, LumaDCLane3
+    vexch1              LumaDCLane0, LumaDCLane1
+    vexch1              LumaDCLane2, LumaDCLane3
+
+    // apply horizontal transform
+    // stage 0
+    vaddsuw             LumaDCLane0, LumaDCLane2
+    vaddsuw             LumaDCLane1, LumaDCLane3
+
+    //stage 1
+    vaddsuw             LumaDCLane0, LumaDCLane1
+    vaddsuw             LumaDCLane2, LumaDCLane3
+ end
+
+ begin
+    // Rename the lanes as after the vaddsuw operation
+    vec16               LumaDCLane0 = vr02
+    vec16               LumaDCLane1 = vr05
+    vec16               LumaDCLane2 = vr03
+    vec16               LumaDCLane3 = vr04
+
+    vec16               Lane0Sign,Lane1Sign,Lane2Sign,Lane3Sign
+    // vec32                Lane0DC32,Lane1DC32,Lane2DC32,Lane3DC32
+
+    vexch2              LumaDCLane0, LumaDCLane2
+    vexch2              LumaDCLane1, LumaDCLane3
+    vexch1              LumaDCLane0, LumaDCLane1
+    vexch1              LumaDCLane2, LumaDCLane3
+
+
+    // Extract the sign
+    vsignw              Lane0Sign, LumaDCLane0
+    vsignw              Lane1Sign, LumaDCLane1
+    vsignw              Lane2Sign, LumaDCLane2
+    vsignw              Lane3Sign, LumaDCLane3
+
+    // Extrac the absolute value
+    VABSW               LumaDCLane0, LumaDCLane0
+    VABSW               LumaDCLane1, LumaDCLane1
+    VABSW               LumaDCLane2, LumaDCLane2
+    VABSW               LumaDCLane3, LumaDCLane3
+
+    // Pack from 16 bits to 32 bits
+
+
+    VMULFW              LumaDCLane0, LumaDCLane0, LumaQuant
+    VMULFW              LumaDCLane1, LumaDCLane1, LumaQuant
+    VMULFW              LumaDCLane2, LumaDCLane2, LumaQuant
+    VMULFW              LumaDCLane3, LumaDCLane3, LumaQuant
+
+    VADDW                LumaDCLane0, LumaDCLane0, LumaF
+    VADDW                LumaDCLane1, LumaDCLane1, LumaF
+    VADDW                LumaDCLane2, LumaDCLane2, LumaF
+    VADDW                LumaDCLane3, LumaDCLane3, LumaF
+
+    // Pack back to 16 bits
+
+    VASRW               LumaDCLane0, LumaDCLane0, LumaShiftNormal
+    VASRW               LumaDCLane1, LumaDCLane1, LumaShiftNormal
+    VASRW               LumaDCLane2, LumaDCLane2, LumaShiftNormal
+    VASRW               LumaDCLane3, LumaDCLane3, LumaShiftNormal
+
+    // Restore sign
+    VMULW               LumaDCLane0, LumaDCLane0, Lane0Sign
+    VMULW               LumaDCLane1, LumaDCLane1, Lane1Sign
+    VMULW               LumaDCLane2, LumaDCLane2, Lane2Sign
+    VMULW               LumaDCLane3, LumaDCLane3, Lane3Sign
+
+    // Store back the result
+    vst64               LumaDCLane0,[BuffStart, 0]      //vr04
+    vst64               LumaDCLane1,[BuffStart, 8]      //vr05
+    vst64               LumaDCLane2,[BuffStart, 16]     //vr06
+    vst64               LumaDCLane3,[BuffStart, 24]
+ end
+
+
+endfunc
+
+
+//==================================================================================================
+
+// Global Parameters for Chroma DC
+begin
+    p16                 BuffStart               // Start of Chroma DC coefficients
+    p16                 ChromaShift
+    p16                 Address
+    p16                 QuantVal
+    p16                 ChromaF
+    vec32               ChromaQuant // = vr04
+    p16                 ConstVal // = vr05
+    vec16               ChromaDCLane0 
+    vec16               ChromaDCLane1 
+    vec16               ChromaDCLane2 
+    vec16               ChromaDCLane3 
+    vec16               LinkAddress
+// Subroutine, which will be called by TransformQuantiseChromaDC function
+// twice for U and V
+// BuffStart will contain U and V
+func.s                    TransformQuantiseUVDC
+    // Params -----------
+
+    // End params -------
+
+
+    // Transform
+    vec16               Lane0Sign,Lane1Sign,Lane2Sign,Lane3Sign,
+
+    // Froward Transform
+    // stage 0
+    vaddsuw             ChromaDCLane0, ChromaDCLane1  //
+ 
+    // ChromaDCLane0 = (d0 + d2),(d1+d3)
+    // ChromaDCLane1 = (d0 - d2) ,(d1-d3)
+
+    vexch1              ChromaDCLane0, ChromaDCLane1
+   
+    
+    
+    // ChromaDCLane0 = (d0 + d2),(d0 - d2)
+    // ChromaDCLane1 = (d1+d3) ,(d1-d3)
+    // stage 1
+    vaddsuw             ChromaDCLane0, ChromaDCLane1
+   
+    
+    
+    // ChromaDCLane0 = ((d0 + d2)+ (d1+d3)),((d0 - d2) + (d1-d3))
+    // ChromaDCLane1 = ((d0 + d2) - (d1+d3)) ,((d0 - d2) - (d1-d3))
+
+    vexch1              ChromaDCLane0, ChromaDCLane1
+   
+    
+    
+    // ChromaDCLane0 = ((d0 + d2)+ (d1+d3)),((d0 + d2) - (d1+d3))
+    // ChromaDCLane1 = ((d0 - d2) + (d1-d3)) ,((d0 - d2) - (d1-d3))
+
+    // **********************************************************
+    // U quantization
+
+    // Extract the sign
+    vsignw              Lane0Sign, ChromaDCLane0
+    vsignw              Lane1Sign, ChromaDCLane1
+   
+    // Extrac the absolute value
+    VABSW               ChromaDCLane0, ChromaDCLane0
+    VABSW               ChromaDCLane1, ChromaDCLane1
+   
+    // Multiply by the MF factor
+    VMULFW                ChromaDCLane0, ChromaDCLane0, ChromaQuant
+    VMULFW                ChromaDCLane1, ChromaDCLane1, ChromaQuant
+   
+
+    // ADD the rounding factor
+    VADDW                ChromaDCLane0, ChromaDCLane0, ChromaF
+    VADDW                ChromaDCLane1, ChromaDCLane1, ChromaF
+    
+
+    // Pack back to 16 bits and right shift
+    VASRW               ChromaDCLane0, ChromaDCLane0, ChromaShift
+    VASRW               ChromaDCLane1, ChromaDCLane1, ChromaShift
+    
+
+    // Restore sign
+    VMULW               ChromaDCLane0, ChromaDCLane0, Lane0Sign
+    VMULW               ChromaDCLane1, ChromaDCLane1, Lane1Sign
+   
+
+    // **************************************************************
+
+    // Set the U non zero coefficeint flag in the circular buffer
+    // These can be 4 16 bit instructions, if needed
+    // currently it is 2 32 bit instructions
+    vsnew.15              ChromaDCLane0,VZERO
+    vst32               ChromaDCLane0,[BuffStart, 0]
+    vsnew!s.15            ChromaDCLane1,VZERO
+    vst32               ChromaDCLane1,[BuffStart, 4]
+    vtany.15.s			  ConstVal,1	 
+   
+    
+
+    vjb                 LinkAddress, 0
+    // Delay slot instructions
+~    vst8                'ConstVal, [CirBuf,MPO_UV_DC_NonZeroCoeff]
+~    vst32_2             ChromaDCLane0,[BuffStart, 8]
+~    vst32_2             ChromaDCLane1,[BuffStart, 12]
+
+    
+   
+
+endfunc
+
+//==================================================================================================
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Does the forward hadamard transform for chroma DC
+
+func                    TransformQuantiseChromaDC
+    // Params -----------
+
+    // End params -------
+	p16					AdressTemp
+    // Load and calculate CHROMA SHIFT
+    vmovw               'Address, CHROMA_DIV
+  
+    vld16               'ChromaShift, [Address,0]
+
+    // Load and calculate CHROMA rounding factor
+    vmovw               'Address, CHROMA_QUANT_TABLE
+    vmovw               'AdressTemp, CHROMA_F
+    vld16               'ChromaF, [AdressTemp,0]
+
+
+    // Load CHROMA QUANT factor
+    vld16               'AdressTemp, [Address,0]
+    
+    vim                 BuffStart, CirBuf, MPO_U_DC_CoeffStore
+    vaddw				'ChromaShift, 'ChromaShift, 1
+    vld32               ChromaDCLane0,[BuffStart, 0]
+    vld16               'QuantVal, [AdressTemp,0]
+    vld32               ChromaDCLane1,[BuffStart, 4]
+   
+    
+    
+
+    // U V transform
+    vjl                 LinkAddress, .TransformQuantiseUVDC
+~   vld32_2             ChromaDCLane0,[BuffStart, 8]
+~   vmivw.255           ChromaQuant, QuantVal
+~   vld32_2             ChromaDCLane1,[BuffStart, 12]
+
+
+
+endfunc
+
+end // Global Parameter scope ends here
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Does the forward 4x4 transform
+// Sends channel reply
+// Two adjacent 4x4 blocks will be transforned and quantised at the same time.
+// Each call to this subroutine will transform/quantise two 4x4 blocks
+begin
+    
+    vec16               CoefficientsLane0 = vr02
+    vec16               CoefficientsLane1 = vr03
+    vec16               CoefficientsLane2 = vr04
+    vec16               CoefficientsLane3 = vr05
+    vec16               ShiftedCoeffs1    = vr06
+    vec16               ShiftedCoeffs2    = vr07                                    
+    vec16               TargetAddress     = vr08
+    p16                 MBCodingType = i8
+    p16                 AllCoeffs0 = i1
+    p16                 AllCoeffs1 = i9
+    //p16                 Address
+    p16                 DcPtr
+    p16                 ShiftNormal
+    p16                 QuantVal
+    p16                 RndingF
+    p16                 BuffStart     // Start of coefficients This will be set by the calling
+                                      // function
+    vec32               QuantLane0
+    vec32               QuantLane1
+    vec32               QuantLane2
+    vec32               QuantLane3
+    vec16               Lane0Sign,Lane1Sign,Lane2Sign,Lane3Sign
+    vec16               Lane0Lower32,Lane0Upper32,Lane1Lower32,Lane1Upper32,Lane2Lower32,Lane2Upper32,Lane3Lower32,Lane3Upper32
+    vec16               TotalCoeffs 
+    vec16               CoeffSum
+    p16                 CoeffMask
+    s16                 NonZeroCoeff : AllCoeffs0
+    vec16               SmallCoeffLimit = vr00
+    p16                 AllZero
+    s16                 Reserved        // Used to shift NonZeroCoeff
+    vec16               SumOfBlocks
+    s16                 TotalSum
+    vec16               Offset        
+ 
+    
+    regmap
+
+func.s                  Forward4x4TransformQuantise
+    // Params -----------
+
+    // End params -------
+    vsubw               'BuffStart, 'BuffStart, Offset
+    vmulw               'NonZeroCoeff, 'NonZeroCoeff, 4
+    
+    // load input data
+    vld128              CoefficientsLane1,[BuffStart, 32]
+    vld128              CoefficientsLane2,[BuffStart, 64]
+    vld128              CoefficientsLane0,[BuffStart, 0]
+    vld128              CoefficientsLane3,[BuffStart, 96]
+
+
+    // Froward Transform
+    // apply verical transform
+    // stage 0
+    vaddsuw             CoefficientsLane1, CoefficientsLane2
+    vaddsuw             CoefficientsLane0, CoefficientsLane3
+
+    //stage 1
+    vmulw               ShiftedCoeffs1, CoefficientsLane3, 2
+    vmulw               ShiftedCoeffs2, CoefficientsLane2, 2
+    vaddsuw             CoefficientsLane0, CoefficientsLane1
+    vaddsuw             ShiftedCoeffs1, CoefficientsLane2
+    vaddsuw             CoefficientsLane3, ShiftedCoeffs2
+
+
+  begin
+    // Rename the lanes as after the vaddsuw operation
+    // CoefficientsLane move to different vector registers than the the originally loaded.
+    vec16               CoefficientsLane0 = vr02
+    vec16               CoefficientsLane1 = vr06
+    vec16               CoefficientsLane2 = vr03
+    vec16               CoefficientsLane3 = vr07
+    vec16               ShiftedCoeffs1    = vr04
+    vec16               ShiftedCoeffs2    = vr05
+
+    // transpose matrix
+    vexch2              CoefficientsLane0, CoefficientsLane2
+    vexch2              CoefficientsLane1, CoefficientsLane3
+    vexch1              CoefficientsLane0, CoefficientsLane1
+    vexch1              CoefficientsLane2, CoefficientsLane3
+
+    // apply horizontal transform
+    // stage 0
+    vaddsuw             CoefficientsLane0, CoefficientsLane3
+    vaddsuw             CoefficientsLane1, CoefficientsLane2
+    
+    vmulw               ShiftedCoeffs1, CoefficientsLane3, 2
+    vmulw               ShiftedCoeffs2, CoefficientsLane2, 2
+    
+    //stage 1
+    vaddsuw             CoefficientsLane0, CoefficientsLane1
+    vaddsuw             ShiftedCoeffs1, CoefficientsLane2
+    vaddsuw             CoefficientsLane3, ShiftedCoeffs2
+ end
+
+ begin
+    // Rename the lanes as after the vaddsuw operation
+    vec16               CoefficientsLane0 = vr02
+    vec16               CoefficientsLane1 = vr04
+    vec16               CoefficientsLane2 = vr06
+    vec16               CoefficientsLane3 = vr05
+
+    vexch2              CoefficientsLane0, CoefficientsLane2
+    vexch2              CoefficientsLane1, CoefficientsLane3
+    vexch1              CoefficientsLane0, CoefficientsLane1
+    vexch1              CoefficientsLane2, CoefficientsLane3
+    
+    ///////////////////////////////////////////////////////////
+    // For Intra 16x16 store the Luma DC in case of Luma, for chroma 
+    // always store the DC
+    
+    vst16.MBCodingType      CoefficientsLane0,[DcPtr,0]
+    vst16_4.MBCodingType    CoefficientsLane0,[DcPtr,2]
+    
+    vim                     DcPtr, DcPtr, -4
+    
+    // Clear the DC component
+    vmovw.MBCodingType      CoefficientsLane0,0
+  
+    // Extract the sign
+    vsignw              Lane1Sign, CoefficientsLane1
+    vsignw              Lane0Sign, CoefficientsLane0
+    vsignw              Lane2Sign, CoefficientsLane2
+    vsignw              Lane3Sign, CoefficientsLane3
+
+    // Extract the absolute value
+    VABSW               CoefficientsLane0, CoefficientsLane0
+    VABSW               CoefficientsLane1, CoefficientsLane1
+    VABSW               CoefficientsLane2, CoefficientsLane2
+    VABSW               CoefficientsLane3, CoefficientsLane3
+
+
+    VMULFW              CoefficientsLane0, CoefficientsLane0, QuantLane0
+    VMULFW              CoefficientsLane1, CoefficientsLane1, QuantLane1
+    VMULFW              CoefficientsLane2, CoefficientsLane2, QuantLane2
+    VMULFW              CoefficientsLane3, CoefficientsLane3, QuantLane3
+    
+ 
+    VADDW                CoefficientsLane0, CoefficientsLane0, RndingF
+    VADDW                CoefficientsLane1, CoefficientsLane1, RndingF
+    VADDW                CoefficientsLane2, CoefficientsLane2, RndingF
+    VADDW                CoefficientsLane3, CoefficientsLane3, RndingF
+    
+
+    
+
+    VASRW               CoefficientsLane0, CoefficientsLane0, ShiftNormal
+    VASRW               CoefficientsLane1, CoefficientsLane1, ShiftNormal
+    VASRW               CoefficientsLane2, CoefficientsLane2, ShiftNormal
+    VASRW               CoefficientsLane3, CoefficientsLane3, ShiftNormal
+ 
+    
+    // Set the NonZeroCoeff.
+    vaddw               TotalCoeffs, CoefficientsLane0, CoefficientsLane1
+    vaddaw              TotalCoeffs, CoefficientsLane2, CoefficientsLane3
+    // Restore sign
+    VMULW               CoefficientsLane0, CoefficientsLane0, Lane0Sign
+    VMULW               CoefficientsLane1, CoefficientsLane1, Lane1Sign
+    VMULW               CoefficientsLane2, CoefficientsLane2, Lane2Sign
+    
+    vaddw.f             TotalCoeffs, TotalCoeffs, 0
+    
+    VMULW               CoefficientsLane3, CoefficientsLane3, Lane3Sign
+    
+    // Small coefficient removal
+    // Store the sum of each elements of the block
+    // The blocks here are 2 4x4 and a total of 8 values.
+    // Small coefficient removal is done on a 8x8 block basis
+    vxsumw.CoeffMask    CoeffSum, TotalCoeffs, 255
+    vasrw               'CoeffMask, 'CoeffMask, 1
+    
+    // First block
+    vtany.15.nz         AllCoeffs0, 1
+    // Check for the next block
+    vtany.240.nz        AllCoeffs1, 2 
+    vor                 NonZeroCoeff, NonZeroCoeff, 'AllCoeffs0
+    vst128              CoefficientsLane0,[BuffStart, 0]
+    vor                 NonZeroCoeff, NonZeroCoeff, 'AllCoeffs1 
+    
+    
+    
+    ///////////////////////////////////////////////////////////
+    // Store back the result
+    vst128              CoefficientsLane1,[BuffStart, 32]
+    vjb                 TargetAddress, 0
+~   vst128              CoefficientsLane2,[BuffStart, 64]
+~   vst128              CoefficientsLane3,[BuffStart, 96]
+~   vim                 BuffStart, BuffStart, -16
+end // Rename lanes
+
+endfunc
+ //----------------------------------------------------------------------------------------------------
+// Is Macro
+// Zeros one 8x8 block
+
+func.s                    ZeroBlocks
+
+    vst128           VZERO [BuffStart,0]
+    vst128           VZERO [BuffStart,32]
+    vst128           VZERO [BuffStart,64]
+    vst128           VZERO [BuffStart,96]
+    vst128           VZERO [BuffStart,128]
+    vjb              TargetAddress, 0
+~   vst128           VZERO [BuffStart,160]
+~   vst128           VZERO [BuffStart,192]
+~   vst128           VZERO [BuffStart,224]
+
+endfunc
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Calls  forward 4x4 transform
+// which in turn will do for two adjacent blocks
+// This also does the smallcoeff removal
+
+func.f                    Forward4x4LumaTransformAndSmallCoeff
+    // Params -----------
+
+    // End params -------
+    p16					Buff
+    // Load LUMA SHIFT
+    vmovw               'BuffStart, LUMA_DIV
+    vmovw               'Buff, LUMA_F
+    vld16               'ShiftNormal, [BuffStart,0]
+    
+    // Load LUMA rounding factor
+    vld16               'RndingF, [Buff,0]
+    vmovw               'BuffStart, LUMA_QUANT_TABLE
+    // Mask for lane 8
+    vmovw               'CoeffMask, 128
+    vld16               'BuffStart, [BuffStart,0]
+    
+    vasrw				'RndingF, 'RndingF, 1
+
+	vmovw               Offset, (3*32)
+	vmovw               TargetAddress, .Forward4x4TransformQuantise
+	
+    // Load LUMA QUANT factor
+    vld64               QuantLane0, [BuffStart,0]
+    vld64               QuantLane1, [BuffStart,8]
+    vld64               QuantLane2, [BuffStart,16]
+    vld64               QuantLane3, [BuffStart,24]
+    
+    //Shift the quant factors
+    vmr4w.240           QuantLane0, QuantLane0, QuantLane0      
+    vmr4w.240           QuantLane1, QuantLane1,QuantLane1   
+    vmr4w.240           QuantLane2, QuantLane2,QuantLane2   
+    vmr4w.240           QuantLane3, QuantLane3,QuantLane3
+    
+    
+     
+    vaddw.0xab          TargetAddress, TargetAddress, 1
+    //vld8w               'MBCodingType, [CirBuf, MPO_MBCodingType]
+    //vseqw               'MBCodingType, MBCT_H264_INTRA16X16
+    //vmovw.s.1           'MBCodingType, 17   //// Mask for lane0 and lane4 where the DC values are 
+    //vmovw!s.1           'MBCodingType, 0             
+    vjb                 TargetAddress, .LumaTransformExit
+    // Set the start to block14, to do in reverse order.
+    // If done in reverse order then NonZeroCoeff needs shifting and oring
+~   vim                 BuffStart, CirBuf, (MPO_PixelCoeffBuffer + PCB_RESIDUAL_Y + (12*32 + 16))
+~   vim                 DcPtr, CirBuf, (MPO_Y_DC_CoeffStore0 + 28)  // FOR Block14 and block15
+    // Set the initial values for NonZeroCoeff, each of the 16 bit represents if one of the 16 blocks are
+    // having non-zero coefficients. DC is not considered.
+~   vmovw               'NonZeroCoeff, 0
+    
+
+
+label LumaTransformExit
+
+    // Store the NonZeroCoeff
+    vjp.MBCodingType    .SmallCoeffExit  
+
+       
+    //Small Coefficient removal
+    // Do this only if it is not MBCT_H264_INTRA16X16 and MBCT_H264_INTRA4X4
+    // MBCT_H264_INTRA4X4 not supported
+    // CoeffSum stores the sum of 2 4x4 blocks in each lane
+    // -------------------------
+    //  7  6  5  4  3 2 1 0
+
+    // -------------------------
+    
+    // For 8x8 blocks the addition will be  0 + 2, 1 + 3, 4+6, 5+7
+    // 1 0 + 3 2
+~   vxsum.3             CoeffSum, CoeffSum, 15     // DELAY SLOT
+~   vsr8.1              NonZeroCoeff, NonZeroCoeff, 2	// DELAY SLOT
+    // 5  4 + 7  6
+~   vxsum.12            CoeffSum, CoeffSum, 240	// DELAY SLOT
+    
+    // Sum of all coeffs for each 8x8 block is  3  2  1  0
+    
+     // Calculate the sum of all four 8x8 blocks
+    vxsumw              TotalSum, CoeffSum, 15
+    
+    // If all four blocks are zero then exit the loop
+    vaddw.f             TotalSum, TotalSum, 0
+    vtany.4.z           AllZero, 1
+    vjp.AllZero         .SmallCoeffExit 
+    
+    // Check if the sum of each block is less than 2 and set the sticky flag
+~   vsltw.15            CoeffSum, 2
+    
+    // By default move all values to zero . for less than 2 the value will be zero
+~   vmovw.15            CoeffSum, 0
+    
+    // Any block whose value is more than 2 is set to 9
+~   vmovw!s.15          CoeffSum, 9
+    
+    
+    // Value for comparing all four blocks
+    vmovw.15            SmallCoeffLimit, 4
+    
+    // Check if the sum of all blocks is less than 6
+    vxsumw.15           SumOfBlocks, CoeffSum, 15
+    vsltw.15            SumOfBlocks, 6
+    
+    // If less than 6 then all the blocks has to be zeroes
+    // Make i00 to i03 1
+    vmovw.s.15          SmallCoeffLimit, 1
+    
+    // If all the blocks are zeroed then NonZeroCoeff is made zero
+    // Not needed as can be done with the individual blocks
+    
+    // If sum of all blocks is not less than 6 then compare each block to be less than or
+    // equal to 4
+    vlew!s.15           SmallCoeffLimit, CoeffSum, SmallCoeffLimit
+    
+    // If no blocks are to be zero just exit the loop
+    vaddw.15.f          SmallCoeffLimit, SmallCoeffLimit, 0
+    vtall.15.z          AllZero, 1
+    vjp.AllZero         .SmallCoeffExit 
+~   vnop
+~    vnop
+~   vnop
+   
+    // NOTE with conditional VAND operation the max range for limm data is -16384 to 16383
+    // So the mask for the blocks will not work in this case, hence need to move the mask into ARC register
+    
+    // Zero block 0 conditionally            
+    vjl.i0                              TargetAddress, .ZeroBlocks
+~   vim                                 BuffStart, CirBuf, (MPO_PixelCoeffBuffer + PCB_RESIDUAL_Y)
+  
+@   mov             r1, 0xffcc
+~   vand.1.nz           NonZeroCoeff, NonZeroCoeff, r1
+~   vsr8.15             VFLAGS, VFLAGS, 2
+    
+    vaddw               'BuffStart, 'BuffStart, 16
+    
+    // Zero block 1 conditionally 
+    vjl.i1              TargetAddress, .ZeroBlocks
+@   mov             r1, 0xff33
+~   vand.1.nz           NonZeroCoeff, NonZeroCoeff, r1
+~   vsr8.15             VFLAGS, VFLAGS, 2
+~   vnop
+    
+    vaddw               'BuffStart, 'BuffStart, ((32 * 8) -16)
+    
+    // Zero block 2 conditionally 
+    vjl.i2              TargetAddress, .ZeroBlocks
+@   mov             r1, 0xccff
+~   vand.1.nz           NonZeroCoeff, NonZeroCoeff, r1
+~   vsr8.15             VFLAGS, VFLAGS, 2
+~   vnop
+    
+    vaddw               'BuffStart, 'BuffStart, 16
+    
+    // Zero block 3 conditionally 
+    vjl.i3              TargetAddress, .ZeroBlocks
+@   mov             r1, 0x33ff
+~   vand.1.nz           NonZeroCoeff, NonZeroCoeff, r1
+~   vnop
+~   vnop
+   
+
+label SmallCoeffExit
+
+    vim                 BuffStart, CirBuf, MPO_NonZeroCoeffLuma
+    
+    // This is forced to zero as NonZeroCoeffLuma is shifted down at this place
+    vst16_0             NonZeroCoeff,[BuffStart,0]
+
+
+endfunc
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Calls  forward 4x4 transform
+// which in turn will do for two adjacent blocks
+// This also does the smallcoeff removal
+
+func.f                    Forward4x4ChromaTransformAndSmallCoeff
+
+    p16					Buff
+    // Load Chroma SHIFT
+    vmovw               'BuffStart, CHROMA_DIV
+    vmovw               'Buff, CHROMA_F
+    vld16               'ShiftNormal, [BuffStart,0]
+    
+    // Load LUMA rounding factor
+    vld16               'RndingF, [Buff,0]
+      
+    
+    
+    vmovw               'CoeffMask, 8
+    vmovw               CoeffSum, 0
+
+
+    // Load CHROMA QUANT factor
+    vmovw               'BuffStart, CHROMA_QUANT_TABLE
+    vasrw				'RndingF, 'RndingF, 1
+    vld16               'BuffStart, [BuffStart,0]
+    vmovw               Offset, ((3*32) + 16)
+     
+    vmovw.3             TargetAddress, .Forward4x4TransformQuantise
+    vmovw.1             'MBCodingType, 17   //// Mask for lane0 and lane4 where the DC values are 
+    vaddw.1             TargetAddress, TargetAddress, 1
+    vld64               QuantLane0, [BuffStart,0]
+    vld64               QuantLane1, [BuffStart,8]
+    vld64               QuantLane2, [BuffStart,16]
+    vld64               QuantLane3, [BuffStart,24]
+    vmr4w.240           QuantLane0, QuantLane0, QuantLane0
+    
+    
+    vmr4w.240           QuantLane1, QuantLane1, QuantLane1
+    
+   
+    vmr4w.240           QuantLane2, QuantLane2, QuantLane2
+    
+    
+    vmr4w.240           QuantLane3, QuantLane3, QuantLane3
+    
+    
+    vmovw.4             TargetAddress, .VTransformExit
+               
+    // Transform for U component
+    vjb                 TargetAddress, 0
+    // Set the start to block2, to do in reverse order.
+    // If done in reverse order then NonZeroCoeffChroma needs shifting and oring
+~   vim                 BuffStart, CirBuf, (MPO_PixelCoeffBuffer + PCB_RESIDUAL_V + (4*32))
+~   vim                 DcPtr, CirBuf, (MPO_V_DC_CoeffStore + 4)  // FOR Block2 and block3
+    // Set the initial values for NonZeroCoeffsChroma, each of the bit represents one of the 4x4 blocks.
+    // DC is not considered.
+~   vmovw               'NonZeroCoeff, 0
+
+label VTransformExit
+    
+    
+    // Transform for V component
+    
+    vmovw.3             TargetAddress, .Forward4x4TransformQuantise
+    vmovw.4             TargetAddress, .UTransformExit
+    vaddw.1             TargetAddress, TargetAddress, 1
+    vjb                 TargetAddress, 0
+    // Set the start to block2, to do in reverse order.
+    // If done in reverse order then NonZeroCoeffChroma needs shifting and oring
+~   vim                 BuffStart, CirBuf, (MPO_PixelCoeffBuffer + PCB_RESIDUAL_U + (4*32))
+~   vim                 DcPtr, CirBuf, (MPO_U_DC_CoeffStore + 4)  // FOR Block2 and block3
+~   vnop
+
+
+
+label UTransformExit
+
+    // Small coefficient removal
+   
+    // CoeffSum stores the sum of 2 4x4 blocks in each lane
+    // -------------------------
+    //    V V U U
+
+    // -------------------------
+    
+    // For 8x8 blocks add the both Vs together and same with Us
+    // 1 0 + 3 2
+    vxsumw.1            CoeffSum, CoeffSum, 3
+    
+    // 5  4 + 7  6
+    vxsumw.2            CoeffSum, CoeffSum, 12
+    
+    // Sum of all coeffs for each v and U 1  0
+    
+    // If all four blocks are zero then exit the loop
+    vaddw.f             CoeffSum, CoeffSum, 0
+    vtall.3.z           AllZero, 1
+    vjp.AllZero         .ChromaExit 
+    
+    // Move Coeff count to lane1
+~   vsr8.1              NonZeroCoeff, NonZeroCoeff, 2
+    // Check if the sum of each block is less than 2 and set the sticky flag
+~   vsltw.3            CoeffSum, 2
+    
+    // By default move all values to zero . for less than 2 the value will be zero
+~   vmovw.3            CoeffSum, 0
+    
+    // Any block whose value is more than 2 is set to 9
+    vmovw!s.3          CoeffSum, 9
+    
+    
+    // Value for comparing all four blocks
+    vmovw.3            SmallCoeffLimit, 4
+    
+    
+    // If sum of all blocks is than or  equal to 4
+    vlew.3             SmallCoeffLimit, CoeffSum, SmallCoeffLimit
+    
+    // If no blocks are to be zero just exit the loop
+    vaddw.3.f          SmallCoeffLimit, SmallCoeffLimit, 0
+    vtall.3.z          AllZero, 1
+    vjp.AllZero        .ChromaExit 
+~   vnop
+~   vnop
+~   vnop
+   
+    
+    // Zero V block conditionally            
+    vjl.i0                              TargetAddress, .ZeroBlocks
+~   vim                                 BuffStart, CirBuf, (MPO_PixelCoeffBuffer + PCB_RESIDUAL_U)
+    
+    // clear v
+~   vand.1.nz           NonZeroCoeff, NonZeroCoeff, 0xf0
+~   vsr8.15             VFLAGS, VFLAGS, 2  
+    vnop
+    
+    // Zero U block conditionally            
+    vjl.i1                              TargetAddress, .ZeroBlocks
+~   vim                                 BuffStart, CirBuf, (MPO_PixelCoeffBuffer + PCB_RESIDUAL_V)
+    
+    // clear v
+~   vand.1.nz           NonZeroCoeff, NonZeroCoeff, 0x0f
+~   vnop
+
+    
+ 
+label ChromaExit
+
+    vim                 BuffStart, CirBuf, MPO_NonZeroCoeffChroma
+    
+    // This is forced to zero as NonZeroCoeffLuma is shifted down at this place
+    vst8_0                NonZeroCoeff,[BuffStart,0]
+
+endfunc
+
+end // Global variables
+
+
+
+//############################################################################################################################
+
+//                                  INVERSE TRANSFORM AND QUANTISATION
+
+//#############################################################################################################################
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Does the Inverse hadamard transform for luma DC
+// and dequantisation
+
+// Global variables for
+
+begin
+
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr03
+    vec16               CoeffLane2 = vr04
+    vec16               CoeffLane3 = vr05                             
+    vec16               TargetAddress
+    p16                 MBCodingType
+    p16                 BuffStart               // Start of Luma DC coefficients
+    p16                 Address
+    p16                 DivFactor
+    p16                 NonZeroCoeff
+    s16                 NonZeroCoeffFlag : NonZeroCoeff
+    s16                 NonZeroCoeffVal : NonZeroCoeff 
+    p16                 SkipFlag   
+    vec16               ShiftValue
+    vec16               ShiftValueWithDC
+    vec16               NonZeroBlocks
+    vec16               QuantLane0
+    vec16               QuantLane1
+    vec16               QuantLane2
+    vec16               QuantLane3
+    vec16               ShiftedCoeffs1
+    vec16               ShiftedCoeffs2
+    vec16               LinkRegister
+    vec16               Offset
+    p16					CoefWriteAddr
+    p16					UBuffer
+    p16					VBuffer
+    p16					UAddress
+    p16					VAddress
+
+regmap
+
+
+func.s                    InverseTransformLumaDC
+    // Params -----------
+
+    // End params -------
+
+  begin
+
+    // load input data
+    vld64               CoeffLane0,[BuffStart, 0]
+    vld64               CoeffLane2,[BuffStart, 16]
+    vld64               CoeffLane1,[BuffStart, 8]
+    vld64               CoeffLane3,[BuffStart, 24]
+    vim                 BuffStart,   [CirBuf, MPO_PixelCoeffBuffer + PCB_TRANSFORM_Y]
+
+    // Froward Transform
+    // apply verical transform
+    // stage 0
+    vaddsuw             CoeffLane0, CoeffLane2
+    vaddsuw             CoeffLane1, CoeffLane3
+
+    //stage 1
+    vaddsuw             CoeffLane0, CoeffLane1
+    vaddsuw             CoeffLane2, CoeffLane3
+  end
+
+  begin
+    // Rename the lanes as after the vaddsuw operation
+    // LumaDCLanes move to different vector registers then the originally loaded.
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr04
+    vec16               CoeffLane2 = vr05
+    vec16               CoeffLane3 = vr03
+
+    // transpose matrix
+    vexch2              CoeffLane0, CoeffLane2
+    vexch2              CoeffLane1, CoeffLane3
+    vexch1              CoeffLane0, CoeffLane1
+    vexch1              CoeffLane2, CoeffLane3
+
+    // apply horizontal transform
+    // stage 0
+    vaddsuw             CoeffLane0, CoeffLane2
+    vaddsuw             CoeffLane1, CoeffLane3
+
+    //stage 1
+    vaddsuw             CoeffLane0, CoeffLane1
+    vaddsuw             CoeffLane2, CoeffLane3
+ end
+
+ begin
+    // Rename the lanes as after the vaddsuw operation
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr05
+    vec16               CoeffLane2 = vr03
+    vec16               CoeffLane3 = vr04
+
+
+    vexch2              CoeffLane0, CoeffLane2
+    vexch2              CoeffLane1, CoeffLane3
+    vexch1              CoeffLane0, CoeffLane1
+    vexch1              CoeffLane2, CoeffLane3
+
+    // Update the NonZeroCoeff flags
+
+    vgmw                NonZeroCoeff, CoeffLane3
+    vst16_0             CoeffLane0, [BuffStart, (0*32) + 0]
+    vst16_1             CoeffLane0, [BuffStart, (0*32) + 8]
+    vor                 NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+    vst16_2             CoeffLane0, [BuffStart, (0*32) + 16]
+    vmulw               NonZeroCoeffFlag, NonZeroCoeffFlag, 16
+
+    vgmw                NonZeroCoeff, CoeffLane2
+    vst16_3             CoeffLane0, [BuffStart, (0*32) + 24]
+    vst16_0             CoeffLane1, [BuffStart, (4*32) + 0]
+    vor                 NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+    vst16_1             CoeffLane1, [BuffStart, (4*32) + 8]
+    vmulw               NonZeroCoeffFlag, NonZeroCoeffFlag, 16
+
+    vgmw                NonZeroCoeff, CoeffLane1
+    vst16_2             CoeffLane1, [BuffStart, (4*32) + 16]
+    vst16_3             CoeffLane1, [BuffStart, (4*32) + 24]
+    vor                 NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+    vst16_0             CoeffLane2, [BuffStart, (8*32) + 0]
+    vmulw               NonZeroCoeffFlag, NonZeroCoeffFlag, 16
+
+    vgmw                NonZeroCoeff, CoeffLane0
+    vst16_1             CoeffLane2, [BuffStart, (8*32) + 8]
+    vst16_2             CoeffLane2, [BuffStart, (8*32) + 16]
+    vor                 NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+	vst16_3             CoeffLane2, [BuffStart, (8*32) + 24]
+    vor                 'NonZeroCoeff, 'NonZeroCoeffVal, 'NonZeroCoeffFlag
+    
+
+    // Store the DC coefficients into the Pixel coeff buffer
+   
+
+
+    vst16_0             CoeffLane3, [BuffStart, (12*32) + 0]
+
+    vjb                 TargetAddress, 0
+~   vst16_1             CoeffLane3, [BuffStart, (12*32) + 8]
+~   vst16_2             CoeffLane3, [BuffStart, (12*32) + 16]
+~   vst16_3             CoeffLane3, [BuffStart, (12*32) + 24]
+ end
+
+endfunc
+
+
+// Does the inverse 4x4 transorm
+// two blocks at a time
+
+
+func.s                  Inverse4x4CoeffTransform
+    ////////////////////////////////////////////////////
+
+begin
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr03
+    vec16               CoeffLane2 = vr04
+    vec16               CoeffLane3 = vr05   
+     // apply verical transform
+    
+    vasrw               ShiftedCoeffs1, CoeffLane1, 1
+    vasrw               ShiftedCoeffs2, CoeffLane3, 1
+    
+    // stage 0
+    vaddsuw             CoeffLane0, CoeffLane2
+    // CoeffLane0 = L0 + L2 , CoeffLane2 =  L0 -L2
+    
+    
+    vaddsuw             CoeffLane1, ShiftedCoeffs2
+    // CoeffLane1 = L1 + L3>>1
+    
+    vaddsuw             ShiftedCoeffs1, CoeffLane3
+    // CoeffLane3= L1>>1 - L3
+   
+
+    //stage 1
+    vaddsuw             CoeffLane0, CoeffLane1
+    vaddsuw             CoeffLane2, CoeffLane3
+end
+
+begin
+    // Rename the lanes as after the vaddsuw operation
+    // CoefficientsLane move to different vector registers than the the originally loaded.
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr04
+    vec16               CoeffLane2 = vr05
+    vec16               CoeffLane3 = vr03
+
+    // transpose matrix
+    vexch2              CoeffLane0, CoeffLane2
+    vexch2              CoeffLane1, CoeffLane3
+    vexch1              CoeffLane0, CoeffLane1
+    vexch1              CoeffLane2, CoeffLane3
+
+    // apply horizontal transform
+    
+    vasrw               ShiftedCoeffs1, CoeffLane1, 1
+    vasrw               ShiftedCoeffs2, CoeffLane3, 1
+    
+    // stage 0
+    // stage 0
+    vaddsuw             CoeffLane0, CoeffLane2
+    // CoeffLane0 = L0 + L2 , CoeffLane2 =  L0 -L2
+    
+    vaddsuw             ShiftedCoeffs1, CoeffLane3
+    // CoeffLane3= L1>>1 - L3
+    
+    vaddsuw             CoeffLane1, ShiftedCoeffs2
+    // CoeffLane1 = L1 + L3>>1
+    
+    //stage 1
+    //stage 1
+    vaddsuw             CoeffLane2, CoeffLane3
+    vaddsuw             CoeffLane0, CoeffLane1
+ end
+
+ begin
+    // Rename the lanes as after the vaddsuw operation
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr05
+    vec16               CoeffLane2 = vr03
+    vec16               CoeffLane3 = vr04
+
+    vexch2              CoeffLane0, CoeffLane2
+    vexch2              CoeffLane1, CoeffLane3
+    vexch1              CoeffLane0, CoeffLane1
+    vexch1              CoeffLane2, CoeffLane3
+    
+    vaddw               CoeffLane0, CoeffLane0, 32
+    vaddw               CoeffLane1, CoeffLane1, 32
+    vaddw               CoeffLane2, CoeffLane2, 32
+    vaddw               CoeffLane3, CoeffLane3, 32
+    
+    vasrw               CoeffLane0, CoeffLane0, 6
+    vasrw               CoeffLane1, CoeffLane1, 6
+    vasrw               CoeffLane2, CoeffLane2, 6
+    vasrw               CoeffLane3, CoeffLane3, 6
+
+    ///////////////////////////////////////////////////
+    
+ 	vst128              CoeffLane0,[CoefWriteAddr, 0]
+
+    vjb                 LinkRegister, 0
+~   vst128              CoeffLane1,[CoefWriteAddr, 32]
+~   vst128              CoeffLane2,[CoefWriteAddr, 64]
+~   vst128              CoeffLane3,[CoefWriteAddr, 96]
+end
+
+endfunc
+
+// Does the Inverse quant and transform
+// It is done on two 4x4 blocks in parallel
+func.f                   InverseQuantTransformCoeffs
+    // Params -----------
+
+    // End params -------
+    
+    // Check if there are coefficients exists in the block.
+    // If there are no coefficients in both the blocks then skip dpoing the inverse quant/transform
+    // If any of the two blocks has coefficeint then, do the inverse quant/transform for bioth blocks
+    // even if one of the blocks has no coefficients
+begin
+    vec16               CoeffLane0 = vr02
+    vec16               CoeffLane1 = vr03
+    vec16               CoeffLane2 = vr04
+    vec16               CoeffLane3 = vr05       
+    // the order of doing the block is 0 & 1 , 4&5 2&3 and so on
+    vaddw               'BuffStart, 'BuffStart, Offset
+    vaddw				'CoefWriteAddr, 'CoefWriteAddr, Offset
+    // Move the scalar into vector lanes and set the flag. two lanes at time at a time
+    vmivw.3.f           NonZeroBlocks , NonZeroCoeff
+    vld128              CoeffLane3,[BuffStart, 96]
+    vtall.3.z           SkipFlag, 1
+    vld128              CoeffLane0,[BuffStart, 0]
+    vjp.SkipFlag        .SkipInverseTransformQuant
+~   vasrw               'NonZeroCoeff, 'NonZeroCoeff, 2
+        
+    
+    // Load the blocks
+     // load input data
+~   vld128              CoeffLane1,[BuffStart, 32]
+~   vld128              CoeffLane2,[BuffStart, 64]
+    
+    
+    vmulw               CoeffLane0, CoeffLane0, QuantLane0
+    vmulw               CoeffLane1, CoeffLane1, QuantLane1
+    vmulw               CoeffLane2, CoeffLane2, QuantLane2
+    vmulw               CoeffLane3, CoeffLane3, QuantLane3
+    
+    vlslvw              CoeffLane0, CoeffLane0, ShiftValueWithDC 
+    
+    vjl                 LinkRegister, .Inverse4x4CoeffTransform
+~   vlslvw              CoeffLane1, CoeffLane1, ShiftValue
+~   vlslvw              CoeffLane2, CoeffLane2, ShiftValue
+~   vlslvw              CoeffLane3, CoeffLane3, ShiftValue  
+	vjb                 TargetAddress, 0
+~  	vim                 BuffStart, BuffStart, 16
+~  	vim					CoefWriteAddr, CoefWriteAddr, 16
+~  	vnop
+
+ end
+
+label SkipInverseTransformQuant
+
+	vst128           VZERO [CoefWriteAddr,0]
+    vst128           VZERO [CoefWriteAddr,32]
+    vst128           VZERO [CoefWriteAddr,64]
+    vst128           VZERO [CoefWriteAddr,96]
+   	vjb                 TargetAddress, 0
+~  	vim                 BuffStart, BuffStart, 16
+~  	vim					CoefWriteAddr, CoefWriteAddr, 16
+~  	vnop
+
+endfunc
+
+
+
+
+func.f                    InverseTransformDequantLumaCoeffs
+    // Params -----------
+
+    // End params -------
+   
+    // Luma DC Inverse transform and Dequantise
+    
+    // Do the Luma inverse transform only if the coding type is MBCT_H264_INTRA16X16
+    //vld8w               'MBCodingType, [CirBuf, MPO_MBCodingType]
+    //vseqw               'MBCodingType, MBCT_H264_INTRA16X16
+    //vmovw.s.1           'MBCodingType, 17   
+    //vmovw!s.1           'MBCodingType, 0
+  
+    
+    vim                 BuffStart, CirBuf, MPO_NonZeroCoeffLuma
+    vmovw             	'Address, LUMA_DIV
+    vld16               NonZeroCoeffVal, [BuffStart,0]
+    
+    // Luma DC inverse transform only.
+    // This will store the DC values back into the pixel coeff buffer 
+    // Inverse quant is not doen here, but will be done with all the luma coeffs         
+    vjl.i0              TargetAddress, .InverseTransformLumaDC
+~   vim                 BuffStart, [CirBuf, MPO_Y_DC_CoeffStore0]
+~   vmovw               'NonZeroCoeffFlag, 0
+    // Zero NonZeroCoeff
+~   vmvw                'NonZeroCoeff, 'NonZeroCoeffVal
+    
+    
+    // Luma Inverse quant and transform  
+  
+    // Load LUMA Div factor
+    vld16               'DivFactor, [Address,0]
+    vmovw				'CoefWriteAddr, TRANSFORM_Y
+    vmovw               'Address, LUMA_INVERSE_QUANT_TABLE
+    vmovw               TargetAddress, .InverseQuantTransformCoeffs
+    vld16               'Address, [Address,0]
+    vmivw                ShiftValueWithDC, DivFactor
+    vmivw                ShiftValue, DivFactor
+    
+    // For DC component the DivFactor has to be reduced by 2
+    vsubw.i0.17              'ShiftValueWithDC,'ShiftValueWithDC, 2
+
+
+    // Load LUMA QUANT factor
+    
+    vld64               QuantLane0, [Address,0]
+    vld64               QuantLane1, [Address,8]
+    vld64               QuantLane2, [Address,16]
+    vld64               QuantLane3, [Address,24]
+    
+    vmr4w.240           QuantLane0, QuantLane0, QuantLane0
+    
+    vmr4w.240           QuantLane1, QuantLane1, QuantLane1
+    
+    vmr4w.240           QuantLane2, QuantLane2, QuantLane2
+    
+    
+    vaddw.171           TargetAddress, TargetAddress, 2
+    vjb                 TargetAddress, .InverseTransformLumaExit
+~   vim                 BuffStart, [CirBuf, MPO_PixelCoeffBuffer + PCB_TRANSFORM_Y]
+~   vmovw               Offset, (3*32)
+~   vmr4w.240           QuantLane3, QuantLane3, QuantLane3
+    
+
+label InverseTransformLumaExit
+
+endfunc
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+
+/// Chroma Inverse Transform and Inverse quantization
+
+////////////////////////////////////////////////////////////////////////////////////
+
+
+//==================================================================================================
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Does the Inverse hadamard transform and quantisation for chroma DC
+
+func.f                   InverseTransformDequantChromaCoeffs
+    // Params -----------
+
+    // End params -------
+
+   // Chroma DC Inverse transform and Dequantize
+    
+    // Do the U chroma inverse transform   
+    
+    
+    
+    // Chroma DC inverse transform only.
+    // This will store the DC values back into the pixel coeff buffer 
+    // Inverse quant is not doen here, but will be done with all the chroma coeffs   
+   // vmovw                CoeffLane0, 0
+   // vmovw                CoeffLane1, 0
+   // vmovw                CoeffLane2, 0
+   // vmovw                CoeffLane3, 0
+ 	
+ 	vim                 VBuffer, [CirBuf, MPO_V_DC_CoeffStore]
+    // Zero NonZeroCoeff
+    vmovw               'NonZeroCoeffFlag, 0
+    vim				    VAddress,  [CirBuf, MPO_PixelCoeffBuffer + PCB_TRANSFORM_V]
+    
+    
+    // load input V data
+    vld32               CoeffLane0,[VBuffer, 0]
+    vld32               CoeffLane1,[VBuffer, 4]
+    vim                 UBuffer, [CirBuf, MPO_U_DC_CoeffStore]
+    vim				    UAddress,  [CirBuf, MPO_PixelCoeffBuffer + PCB_TRANSFORM_U]
+    vmovw.252           CoeffLane1, 0
+ 
+    
+    
+
+
+    // Inverse Transform
+    // stage 0
+    vaddsuw             CoeffLane0, CoeffLane1 
+    
+    vmovw.252                CoeffLane2, 0 
+    // ChromaDCLane0 = (d0 + d2),(d1+d3)
+    // ChromaDCLane1 = (d0 - d2) ,(d1-d3)
+
+    vexch1              CoeffLane0, CoeffLane1
+    vmovw.252           CoeffLane3, 0
+    
+    vld32               CoeffLane2,[UBuffer, 0]
+    
+    // ChromaDCLane0 = (d0 + d2),(d0 - d2)
+    // ChromaDCLane1 = (d1+d3) ,(d1-d3)
+    // stage 1
+    vaddsuw             CoeffLane0, CoeffLane1
+    // ChromaDCLane0 = ((d0 + d2)+ (d1+d3)),((d0 - d2) + (d1-d3))
+    // ChromaDCLane1 = ((d0 + d2) - (d1+d3)) ,((d0 - d2) - (d1-d3))
+	vld32               CoeffLane3,[UBuffer, 4]
+    vexch1              CoeffLane0, CoeffLane1
+    // ChromaDCLane0 = ((d0 + d2)+ (d1+d3)),((d0 + d2) - (d1+d3))
+    // ChromaDCLane1 = ((d0 - d2) + (d1-d3)) ,((d0 - d2) - (d1-d3))
+    
+    ///////////////////////////////////////////////////////////////////////////   
+
+    // Update the NonZeroCoeff flags
+    vim                 BuffStart, CirBuf, MPO_NonZeroCoeffChroma
+    vmovw.252           CoeffLane0, 0
+    
+    vgmw              NonZeroCoeff, CoeffLane1
+    vld8w               NonZeroCoeffVal, [BuffStart,0]
+    vaddsuw             CoeffLane2, CoeffLane3  
+    vor               NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+    vexch1              CoeffLane2, CoeffLane3
+    vmulw             NonZeroCoeffFlag, NonZeroCoeffFlag, 4
+    
+    vgmw              NonZeroCoeff, CoeffLane0
+    vaddsuw             CoeffLane2, CoeffLane3
+    vst16_0             CoeffLane0, [VAddress, 0]
+    vor               NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+ 
+    
+    
+
+    vexch1              CoeffLane2, CoeffLane3
+    
+    vst16_1             CoeffLane0, [VAddress, (4*2)]
+    vst16_0             CoeffLane1, [VAddress, (64*2)]
+
+    // ChromaDCLane0 = ((d0 + d2)+ (d1+d3)),((d0 + d2) - (d1+d3))
+    // ChromaDCLane1 = ((d0 - d2) + (d1-d3)) ,((d0 - d2) - (d1-d3))
+    
+
+    ///////////////////////////////////////////////////////////////////////////   
+
+ 
+    
+    vgmw              NonZeroCoeff, CoeffLane2
+    vst16_1             CoeffLane1, [VAddress, (68*2)]
+    vst16_0             CoeffLane2, [UAddress, 0] 
+    vor               NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff
+    vst16_1             CoeffLane2, [UAddress, (4*2)]
+    vmulw             NonZeroCoeffFlag, NonZeroCoeffFlag, 4
+    
+    vgmw              NonZeroCoeff, CoeffLane3
+    vst16_0           CoeffLane3, [UAddress, (64*2)]
+    vst16_1           CoeffLane3, [UAddress, (68*2)]
+    vor               NonZeroCoeffFlag, NonZeroCoeffFlag, 'NonZeroCoeff   
+    
+ // ********************************** END OF UV DC IQ
+    
+     // Update the NonZeroCoeff flags
+    vmulw               NonZeroCoeffFlag, NonZeroCoeffFlag, 4
+    vmovw                'Address, CHROMA_DIV
+    vmovw				'CoefWriteAddr, TRANSFORM_U
+    vld16                'DivFactor, [Address,0]
+    // Or the final NonZeroCoeff
+    vor                 'NonZeroCoeff, 'NonZeroCoeffVal, 'NonZeroCoeffFlag
+    
+    
+    
+
+    // Chroma Inverse quant and transform  
+
+    // Load Chroma Divide factor
+    vmovw               'Address, CHROMA_INVERSE_QUANT_TABLE
+    vmovw               Offset, ((3*32) + 16)
+
+
+
+    // Load CHROMA QUANT factor
+    vld16               'Address, [Address,0]
+    
+    vmivw                ShiftValueWithDC, DivFactor
+    vmivw                ShiftValue, DivFactor
+    
+    // For DC component the DivFactor has to be reduced by 1
+    vsubw.17             ShiftValueWithDC,'ShiftValueWithDC, 1
+    
+    vld64               QuantLane0, [Address,0]
+    vld64               QuantLane1, [Address,8]
+    vld64               QuantLane2, [Address,16]
+    vld64               QuantLane3, [Address,24]
+    
+    vmr4w.240           QuantLane0, QuantLane0, QuantLane0
+ 	
+ 	
+    vmovw.3             TargetAddress, .InverseQuantTransformCoeffs
+    vmr4w.240           QuantLane3, QuantLane3, QuantLane3 
+    vaddw.1             TargetAddress, TargetAddress, 2
+    vmovw.4             TargetAddress, .InverseTransformV
+    vjb                 TargetAddress, 0
+~   vim                 BuffStart, [CirBuf, MPO_PixelCoeffBuffer + PCB_TRANSFORM_U]
+~   vmr4w.240           QuantLane1, QuantLane1, QuantLane1    
+~   vmr4w.240           QuantLane2, QuantLane2, QuantLane2 
+
+
+label InverseTransformV
+	vmovw.3             TargetAddress, .InverseQuantTransformCoeffs
+	vmovw				'CoefWriteAddr, TRANSFORM_V
+    vaddw.1             TargetAddress, TargetAddress, 2
+    vmovw.4             TargetAddress, .InverseTransformChromaExit
+    vjb                 TargetAddress, 0
+~   vim                 BuffStart, [CirBuf, MPO_PixelCoeffBuffer + PCB_TRANSFORM_V]
+~   vnop
+~   vnop
+
+        
+label InverseTransformChromaExit
+
+endfunc
+
+
+////////////////////////////////////////////////////////////////////////////////////
+
+
+end         // Global variables
+
+
+func        CallBackDoFwdTransforms
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_DoFwdTransforms   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+endfunc
+
+
+func        CallBackDoEntropyEncode
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_WriteMacroblock   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+
+endfunc
+
+
+func        CallBackDoInverseTransforms
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_InverseTransforms   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+
+endfunc
+
+
+
+
+func.f                  RevertToSkipped
+    // Params -----------
+    p16                 LastTransQuant
+    // End params -------
+
+    pubreg              LastTransQuant
+
+    p16                 type, nzl
+    s16:nzl             nzc,nzo
+    s16                 skp
+    vec16               mv,mvs,mvsIn
+    regmap
+//       if (cb.MBCodingType & MBCT_H264_INTER &&
+    vld8w               'type, [CirBuf, MPO_MBCodingType]
+    via                 type, type, MBCT_H264_INTER
+    vjp!type            .exit
+//           !(cb.NonZeroCoeffLuma || cb.NonZeroCoeffChroma || cb.UV_DC_NonZeroCoeff))
+~   vld16.type          'nzl, [CirBuf, MPO_NonZeroCoeffLuma]
+~   vld8w.type          nzc, [CirBuf, MPO_NonZeroCoeffChroma]
+~   vld8w.type          nzo, [CirBuf, MPO_UV_DC_NonZeroCoeff]
+    vor                 'nzl, 'nzl, nzc
+    vld64w              mv, [CirBuf, MPO_mv]
+    vor                 'nzl, 'nzl, nzo
+    vld32wl             mvsIn, [CirBuf, MPO_WorkArea_MvSkip]
+    vjp.nzl             .exit
+~   vxsumw.0x55         mvs, mvsIn,1            // broadcast to odd
+~   vxsumw.0xAA         mvs, mvsIn,2            // broadcast to even
+//
+//           if (cb.mv[0].mvx == cb.WorkArea.MvSkip.mvx &&
+//             cb.mv[0].mvy == cb.WorkArea.MvSkip.mvy &&
+//             cb.mv[1].mvx == cb.WorkArea.MvSkip.mvx &&
+//             cb.mv[1].mvy == cb.WorkArea.MvSkip.mvy &&
+//             cb.mv[2].mvx == cb.WorkArea.MvSkip.mvx &&
+//             cb.mv[2].mvy == cb.WorkArea.MvSkip.mvy &&
+//             cb.mv[3].mvx == cb.WorkArea.MvSkip.mvx &&
+//             cb.mv[3].mvy == cb.WorkArea.MvSkip.mvy)
+~   vsubw.f             VZERO, mv, mvs
+    vtall.z             nzl, 255
+//                       // Not transmitting the quant so we have to use the old one for the loop filter
+//                       // as that's what the decoder will do
+//                       cb.QuantValue = m_LastTransmittedQuant[cb.WorkArea.SliceGroup];
+//                       cb.MBCodingType = MBCT_H264_SKIPPED;
+    vmovw               skp, MBCT_H264_SKIPPED
+    vst8.nzl            'LastTransQuant, [CirBuf, MPO_QuantValue]
+    vst8.nzl            skp, [CirBuf, MPO_MBCodingType]
+
+label exit
+
+endfunc
+
+

@@ -1,0 +1,3 @@
+shikhara_gic.c:15:6:int_enable	0	static
+shikhara_gic.c:24:6:int_disable	0	static
+shikhara_gic.c:33:5:gic_init	8	static

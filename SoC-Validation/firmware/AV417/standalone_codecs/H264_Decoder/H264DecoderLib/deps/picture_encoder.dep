@@ -1,0 +1,10 @@
+
+picture_encoder.o:	\
+	./H264DecoderLib/VideoCommon/picture_encoder.cpp \
+	./H264DecoderLib/VideoCommon/picture_encoder.h \
+	./H264DecoderLib/VideoCommon/typdef.h \
+	./H264DecoderLib/VideoCommon/BTPicture.h \
+	./H264DecoderLib/memctl.h \
+	./H264DecoderLib/H264SIMDDec/ARCMedia.h \
+	./H264DecoderLib/H264SIMDDec/AuroraH264Dec.h \
+	./H264DecoderLib/H264SIMDDec/AuroraRecMgr.h 

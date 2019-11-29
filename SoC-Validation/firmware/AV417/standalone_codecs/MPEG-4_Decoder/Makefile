@@ -1,0 +1,170 @@
+##################################################################################
+#
+# Auto-generated Makefile, by buildmake
+#
+##################################################################################
+
+#########################################################
+# Declare all required build variables
+#########################################################
+
+#options
+
+DELETE= del
+##DELETE= del /F /S
+
+export ENABLE_ISOGMC=false
+export ENABLE_VLC=true
+
+
+#tools setup
+
+BASEDIR=.
+MWDIR=/tmp/nodelete/peters/MW_8.0.10/MetaWare/arc
+LIBDIR=MPEGDecoderLib
+APPDIR=MPEGDecoderApp
+ARCGCCDIR=/home/peters/bin/arc-gcc-20060612
+
+INCLUDES= -I./MPEGDecoderLib -I./MPEGDecoderApp/Benchmark
+OPT_FLAGS=
+ifeq (${ENABLE_VLC},true)
+OPT_FLAGS+= -DARC_BITSTREAM_READER -DARC_BITSTREAM_DMA
+endif
+export OPT_FLAGS
+
+MCC_PATH=
+MCC_CC=${MCC_PATH}mcc
+MCC_CC_FLAGS=-g -arc700 -Hhostlib= -Mb -Hi -Hon=Long_enums -Xbarrel_shifter -Xlib -Xea -Xmin_max -Xnorm -Xswap -Xmpy  -Hon=Bool -w0 -Hsdata0  -Hinlfactor=900 -Hinlsize=260 -O6 
+MCC_LD=${MCC_PATH}mcc
+MCC_LD_FLAGS=-g -arc700 -Hhostlib= -Xlib -Hhlsize=32768
+MCC_AR=${MCC_PATH}arac
+MCC_AR_FLAGS=-cru 
+MCC_DEP=${MCC_PATH}mcc
+MCC_DEP_FLAGS=-Hsilent -Hrel -Hmake
+
+LIBS = 
+
+#Individual file build rules
+
+APPOBJS=${APPDIR}/obj/ARC_ROM_VECTORS.o ${APPDIR}/obj/serial_pl01x.o ${APPDIR}/obj/main.o ${APPDIR}/obj/uncached_buf.o 
+
+APPDEPS=${APPDIR}/deps/ARC_ROM_VECTORS.dep  ${APPDIR}/deps/serial_pl01x.dep ${APPDIR}/deps/main.dep ${APPDIR}/deps/uncached_buf.dep 
+
+LIBOBJS=${LIBDIR}/obj/arc_mpeg.o 
+LIBDEPS=${LIBDIR}/deps/arc_mpeg.dep 
+
+
+#########################################################
+# Standard build targets
+#########################################################
+
+# default build
+
+default: dep all
+
+all: bin
+
+#dependencies
+
+dep: ${APPDEPS}
+
+libdep: ${LIBDEPS}
+
+# clean builds
+
+libdepclean:
+	${DELETE} ${LIBDIR}\deps\arc_mpeg.dep 
+
+clean:
+	${DELETE} ${APPDIR}\obj\ARC_ROM_VECTORS.o ${APPDIR}\obj\serial_pl01x.o ${APPDIR}\obj\main.o ${APPDIR}\obj\uncached_buf.o mpegdec file.map
+
+depclean:
+	${DELETE} ${APPDIR}\deps\ARC_ROM_VECTORS.dep  ${APPDIR}\deps\serial_pl01x.dep ${APPDIR}\deps\main.dep ${APPDIR}\deps\uncached_buf.dep 
+
+libclean:
+	${DELETE}  ${LIBDIR}\obj\arc_mpeg.o ${LIBDIR}\libmpegdec.a
+	make -C ${LIBDIR}\libarcavcodec clean
+
+#Generate a library of all files
+
+lib: ${LIBDIR}/libmpegdec.a
+${LIBDIR}/libmpegdec.a: ${LIBOBJS} ${LIBDIR}/libarcavcodec/libarcavcodec.a
+	${MCC_AR} ${MCC_AR_FLAGS} ${LIBDIR}/libmpegdec.a ${LIBOBJS}
+
+#Generate the executable
+
+all: bin
+bin: mpegdec
+mpegdec: ${APPOBJS} ${LIBDIR}/libmpegdec.a ${LIBDIR}/libarcavcodec/libarcavcodec.a
+	${MCC_LD} ${MCC_LD_FLAGS} -e _reset mpeg.cmd -Hldopt=-Csections -Hldopt=-Coutput=file.map ${APPOBJS} ${LIBDIR}/libmpegdec.a ${LIBDIR}/libarcavcodec/libarcavcodec.a ${LIBS} -o mpegdec
+
+
+#########################################################
+# Individual file build control for library files
+#########################################################
+
+
+#dependency file generation
+${LIBDIR}/deps/arc_mpeg.dep: ${LIBDIR}/arc_mpeg.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${LIBDIR}/arc_mpeg.c > ${LIBDIR}/deps/arc_mpeg.dep ; tools/formatdep.pl ${LIBDIR}/deps/arc_mpeg.dep
+#include the dependency file, if it exists
+sinclude ${LIBDIR}/deps/arc_mpeg.dep
+#default target for make
+${LIBDIR}/obj/arc_mpeg.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c -g ${LIBDIR}/arc_mpeg.c -o $@
+
+#########################################################
+# Individual file build control for application files
+#########################################################
+
+#dependency file generation
+#dependency file generation
+${APPDIR}/deps/ARC_ROM_VECTORS.dep: ${APPDIR}/ARC_ROM_VECTORS.s
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/ARC_ROM_VECTORS.s > ${APPDIR}/deps/ARC_ROM_VECTORS.dep ; tools/formatdep.pl ${APPDIR}/deps/ARC_ROM_VECTORS.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/ARC_ROM_VECTORS.dep
+#default target for make
+${APPDIR}/obj/ARC_ROM_VECTORS.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/ARC_ROM_VECTORS.s -o $@
+
+#dependency file generation
+${APPDIR}/deps/main.dep: ${APPDIR}/main.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/main.c > ${APPDIR}/deps/main.dep ; tools/formatdep.pl ${APPDIR}/deps/main.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/main.dep
+#default target for make
+${APPDIR}/obj/main.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/main.c -o $@
+
+#dependency file generation
+${APPDIR}/deps/serial_pl01x.dep: ${APPDIR}/serial_pl01x.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/serial_pl01x.c > ${APPDIR}/deps/serial_pl01x.dep ; tools/formatdep.pl ${APPDIR}/deps/serial_pl01x.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/serial_pl01x.dep
+#default target for make
+${APPDIR}/obj/serial_pl01x.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/serial_pl01x.c -o $@
+
+
+#dependency file generation
+${APPDIR}/deps/uncached_buf.dep: ${APPDIR}/uncached_buf.c
+	${MCC_DEP} ${OPT_FLAGS} ${INCLUDES} ${MCC_DEP_FLAGS} ${MCC_CC_FLAGS} -c ${APPDIR}/uncached_buf.c > ${APPDIR}/deps/uncached_buf.dep ; tools/formatdep.pl ${APPDIR}/deps/uncached_buf.dep
+#include the dependency file, if it exists
+sinclude ${APPDIR}/deps/uncached_buf.dep
+#default target for make
+${APPDIR}/obj/uncached_buf.o:
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}/uncached_buf.c -o $@
+
+
+#########################################################
+# Individual file build control for subproject files
+#########################################################
+
+
+${LIBDIR}/libarcavcodec/libarcavcodec.a:
+	make -C ${LIBDIR}/libarcavcodec
+
+#########################################################
+# End of Makefile
+#########################################################
+

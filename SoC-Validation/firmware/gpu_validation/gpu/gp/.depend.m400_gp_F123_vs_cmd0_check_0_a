@@ -1,0 +1,2 @@
+m400_gp_F123_vs_cmd0_check_0_a.o: m400_gp_F123_vs_cmd0_check_0_a.c \
+ m400_gp_F123_vs_cmd0_check_0_a.h

@@ -1,0 +1,2 @@
+m400_pp_0_IIBF02_check_1_d.o: m400_pp_0_IIBF02_check_1_d.c \
+ m400_pp_0_IIBF02_check_1_d.h

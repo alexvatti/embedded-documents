@@ -1,0 +1,2 @@
+m400_pp_2_FAxx_check_0_a.o: m400_pp_2_FAxx_check_0_a.c \
+ m400_pp_2_FAxx_check_0_a.h

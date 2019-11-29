@@ -1,0 +1,3 @@
+m400_mp_2_F011_PP1_MMU_APB_check_0_a.o: \
+ m400_mp_2_F011_PP1_MMU_APB_check_0_a.c \
+ m400_mp_2_F011_PP1_MMU_APB_check_0_a.h

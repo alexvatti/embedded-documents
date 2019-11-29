@@ -1,0 +1,5 @@
+shikhara_hdmi_bridge.c:22:5:shikhara_hdmi_bridge_reset	0	static
+shikhara_hdmi_bridge.c:41:5:shikhara_hdmi_bridge_reinit	0	static
+shikhara_hdmi_bridge.c:94:5:shikhara_hdmi_bridge_init	0	static
+shikhara_hdmi_bridge.c:147:5:enable_hdmi_bridge	0	static
+shikhara_hdmi_bridge.c:157:6:disable_hdmi_bridge	0	static

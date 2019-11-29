@@ -1,0 +1,481 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+//  showstalls
+metaware
+
+include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#include "ArcMP4SDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"   
+
+macrotable IntraMP4LumaPrediction, 6
+
+
+
+//------------------------------------------------------------------------------
+// Global Function Arguments
+p16                 standard = i3 
+p16                 raw_dataPtr = i7
+//------------------------------------------------------------------------------
+// Intra Prediction Common Register Workspace
+vec16               gDCArray = vr02
+vec16               sadval
+
+//------------------------------------------------------------------------------
+// Name:          CalculateSADDC8
+// Purpose:       Calculates the DC value for each 8x8 sub-block of a macroblock
+// Arguments:     prediction_errorPtr = pointer to residual macroblock
+//                dcarrayPtr = pointer to 16 element array to store dc value
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.s CalculateDC8
+    // function arguments
+    p16                 prediction_errorPtr = i7
+
+begin
+
+
+    vec16               prediction_error0 = vr12
+    vec16               prediction_error1 = vr13
+    vec16               prediction_error2 = vr14
+    vec16               prediction_error3 = vr15
+    vec16               prediction_error4 = vr16
+    vec16               prediction_error5 = vr17
+    vec16               prediction_error6 = vr18
+    vec16               prediction_error7 = vr19
+    vec16               dcarrayTemp0      = vr20
+    vec16               dcarrayTemp1      = vr21
+    vec16               AveVal            = vr22
+    // load prediction data for a 8 rows of 8x8 sub-blocks
+    // 8x8 sub-blocks 0 & 1
+    vld64w              prediction_error0, [raw_dataPtr,   0]
+    vld64w              prediction_error1, [raw_dataPtr,  16]
+    vld64w              prediction_error2, [raw_dataPtr,  32]
+    vld64w              prediction_error3, [raw_dataPtr,  48]
+    vld64w              prediction_error4, [raw_dataPtr,  64]
+    vld64w              prediction_error5, [raw_dataPtr,  80]
+    vld64w              prediction_error6, [raw_dataPtr,  96]
+    vld64w              prediction_error7, [raw_dataPtr, 112]
+
+    // add rows to each other, resetting the accumulator on the first one
+    // 8x8sub-blocks 0 & 1
+    vaddw               dcarrayTemp0, prediction_error0, prediction_error1
+    vaddaw              dcarrayTemp0, prediction_error2, prediction_error3
+    vaddaw              dcarrayTemp0, prediction_error4, prediction_error5
+    vaddaw              dcarrayTemp0, prediction_error6, prediction_error7
+
+     // sum 8 columns of sub-block into result
+    // 8x8 sub-blocks 0
+    vxsumw              gDCArray, dcarrayTemp0, 0xff // every element contains the sum
+    vasrrw              AveVal, gDCArray, 6 // get the average value
+    vasrrw              gDCArray, gDCArray, 3 // divide and round by the 8 to get the DC of the DCT
+    
+ 
+    
+    vsubw               prediction_error0, prediction_error0, AveVal
+    vsubw               prediction_error1, prediction_error1, AveVal
+    vsubw               prediction_error2, prediction_error2, AveVal
+    vsubw               prediction_error3, prediction_error3, AveVal
+    vsubw               prediction_error4, prediction_error4, AveVal
+    vsubw               prediction_error5, prediction_error5, AveVal
+    vsubw               prediction_error6, prediction_error6, AveVal
+    vsubw               prediction_error7, prediction_error7, AveVal
+    
+    vabsw               sadval, prediction_error0
+    vabsaw              sadval, prediction_error1
+    vabsaw              sadval, prediction_error2
+    vabsaw              sadval, prediction_error3
+    vabsaw              sadval, prediction_error4
+    vabsaw              sadval, prediction_error5
+
+    // return to caller
+    vjb                 VSTACK, 0
+    vabsaw              sadval, prediction_error6
+    vabsaw              sadval, prediction_error7
+    // increment dcarray result indicies (shift left by 2 because we process 4
+    // rows and 4 columns at a time)
+    vxsumw              sadval, sadval, 0xff // every element contains the sum
+
+end
+
+endfunc
+//------------------------------------------------------------------------------
+// Name:          IntraModeCostmp4
+// Purpose:       Calculates the Intra cost for MPEG4 to compare against inter cost for mode decision
+//                This requires a SAD calculation as well as an estimate of the number of bits used for DC terms
+// Arguments:     None
+//                
+// Return Value:  void, return value is stored in Circular Buffer
+//------------------------------------------------------------------------------
+
+func.f IntraModeCostmp4
+
+begin
+    // function arguments
+p16 raw_dataPtr = i7  // has to be same as in subroutine CalculateDC8
+p16 block_no
+
+p16 cirPtr
+s16 blkInOffset : cirPtr
+p16 cost = i8
+p16 QuantVal 
+
+p16 temp
+
+// these variables used to determine direction of prediction for each block
+vec16   DC<left:i2, aboveleft:i3, above:i4> = vr04
+vec16   Flag<Left:i2, AboveLeft:i3, Above:i4> = vr05    
+vec16   Diff<Left:i2, AboveLeft:i3, Above:i4> = vr06  
+// these variables used to store predictions and differences per each luma block
+vec16   Res<bk0:i0,rub0, bk1,rub1, bk2,rub2,  bk3, rub3> = vr07
+vec16   Pred<bk0:i0,bk1:i2, bk2:i4,  bk3:i6> = vr08
+vec16   DCDiff<bk0:i0, bk1:i2,  bk2:i4,bk3:i6> = vr09
+
+vec32   DCFwdScaler<bk0:k0, bk1:k2, bk2:k4, bk3:k6> = vr10
+vec32   workarea = vr11
+vec16   ScaleVec
+p16     FixLeft 
+s16 Quant: i0
+ 
+    s16     DCPred : i2   
+    s16     tempdiff  : i2 
+   
+    p32     FwdScaler
+    s32     temp32 : FwdScaler
+    s16     DCScaler : i0
+ 
+    vec16 Offset
+    
+    
+regmap
+    vmovw       'block_no, 0
+    vmovw       'cost, 0
+    vmovw       'temp, 0
+    vld8w       'QuantVal, [CirBuf, MPO_QuantValue]// needed later
+
+    vjl          VSTACK, .CalculateDC8  // calc whitened SAD
+    move16       Quant, QuantVal
+    // set the location of the actual pixels for first 8x8 block
+    vim          cirPtr, CirBuf, MPO_PixelCoeffBuffer  
+    move16       raw_dataPtr, cirPtr
+        
+        //  gDCArray(vr02) holds measured DC, sadval holds the sad
+    vjl          VSTACK, .CalculateDC8
+    vmvw          vr07, gDCArray,1 // move bk 0 result
+    vaddw        'cost, 'cost, sadval // increment cost by the sad for the block    
+    vaddw       'raw_dataPtr, 'raw_dataPtr, 8 
+        
+        // gDCArray(vr02) holds measured DC, sadval holds the sad
+    vjl          VSTACK, .CalculateDC8
+    vmvw          vr07, gDCArray,4 // move bk 0 result
+    vaddw        'cost, 'cost, sadval // increment cost by the sad for the block
+    vaddw       'raw_dataPtr, 'raw_dataPtr, 120 
+        
+        //  gDCArray(vr02) holds measured DC, sadval holds the sad
+    vjl          VSTACK, .CalculateDC8
+    vmvw          vr07, gDCArray,16 // move bk 0 result
+    vaddw        'cost, 'cost, sadval // increment cost by the sad for the block        
+    vaddw       'raw_dataPtr, 'raw_dataPtr, 8 
+        
+        //  gDCArray(vr02) holds measured DC, sadval holds the sad
+    vmvw          vr07, gDCArray,64 // move bk 0 result
+    vaddw        'cost, 'cost, sadval // increment cost by the sad for the block
+            
+            
+    // cost now contains the "whitened SAD"
+    // read the forward and backwards scaling values for DC prediction
+    vim          FixLeft,  QuantVal, SDMOF_mpeg4_fwd_luma_dc_scaler // this array unsigned char
+    vld8w        DCScaler, [FixLeft, 0]
+    move16       temp, DCScaler
+    vmivw.255    ScaleVec, temp    // in every 16 bit word in the SCaleVec
+    // it remains to add the bit cost resulting from DC prediction etc
+    vmulw       'QuantVal, 'QuantVal, 4  // nb this array is an Int array - need 4 bytes
+    vim          FixLeft,   QuantVal, SDMOF_mpeg4_luma_dc_scaler
+    vld32        temp32, [FixLeft, 0]  
+
+    move32      FwdScaler, temp32
+    vadd        DCFwdScaler, VZERO, FwdScaler  // copy this value to each of the 4 32bit locations in vector
+
+    
+    // block 0
+    // load neighbouring data
+    vld8w        Flag_Left, [CirBuf, MPO_LeftMB]
+    vld8w        Flag_Above, [CirBuf, MPO_AboveMB]
+    vld8w        Flag_AboveLeft, [CirBuf, MPO_AboveLeftMB]
+    // now check that the MBs are valid, same ID and Intra
+    vand.28         Flag, Flag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+    vsnew.28        Flag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+   // load the DC terms in the buffers
+    vld16        DC_aboveleft,[FixBuf, MPO_Y_IntraPredDC_Coeff-MPO_SIZE_OF_FIXED_ENTRY+6]
+    vld16        DC_left,[CirLeft, MPO_Y_IntraPredDC_Coeff+2]
+    vld16        DC_above,[FixBuf, MPO_Y_IntraPredDC_Coeff+4]
+    // overwrite the values with 1024 if sticky is set (i.e. not (valid, same id and intra))
+    
+    vmovw.s.28      DC, 1024
+    // now have A B and C
+
+    move16       Diff_Left, DC_aboveleft
+    move16       Diff_Above, DC_aboveleft
+    
+    vdifw.20     Diff, Diff, DC  // abs(B - C) and abs(A - C)
+        
+    move16       DCPred, DC_above            // assume C
+ 
+    move16       tempdiff, Diff_Above         
+    vlew.f      'tempdiff, 'tempdiff, 'Diff_Left   //set condition flag if |B-C| <= |B-A|    
+    vmvw.nz     'DCPred, 'DC_left            // move left accordingly
+    move16       Pred_bk0, DCPred           // save in vector Pred
+    // have DCprediction for block 0   
+    
+    vsubw.1      Res, Res, Pred   // subtract prediction from actual
+    
+    vmul.3       workarea, DCFwdScaler, Res // quantiser with current dc-scaler multiplier
+ 
+    vasrr.3      workarea, workarea, 20 // add 1<<19 and shift down by 20 to get quantised val
+    
+    vmvw.1       DCDiff, workarea // save it to DCDiff_bk0
+    
+    vmulw.1      Res, DCDiff, DCScaler // mult diff by dc_scaler
+    
+    vaddw.1      Res, Res, Pred // add back prediction (need for predicting other DCs)
+    
+// now block 1
+    move16       DC_left, Res_bk0
+    vld16        DC_aboveleft,[FixBuf, MPO_Y_IntraPredDC_Coeff+4]
+    vld16        DC_above,[FixBuf, MPO_Y_IntraPredDC_Coeff+6]
+
+    vld8w        Flag_Above, [CirBuf, MPO_AboveMB]
+    move16       Flag_AboveLeft, Flag_Above
+    // no need to check left as in same MB
+    vand.24      Flag, Flag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+    vsnew.24     Flag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+  
+    vmovw.s.24   DC, 1024
+        // now have A B and C
+    move16       Diff_Left, DC_aboveleft
+    move16       Diff_Above, DC_aboveleft
+    
+    vdifw.20     Diff, Diff, DC  // abs(B - C) and abs(A - C)
+        
+    move16       DCPred, DC_above            // assume B
+ 
+    move16       tempdiff, Diff_Above         
+    vlew.f      'tempdiff, 'tempdiff, 'Diff_Left   //set condition flag if |B-C| <= |B-A|    
+    vmvw.nz     'DCPred, 'DC_left            // move left accordingly
+    move16       Pred_bk1, DCPred
+    // have DCprediction for block 1   
+    
+    
+    vsubw.4      Res, Res, Pred   // subtract prediction from actual
+    
+    vmul.12      workarea, 'DCFwdScaler, Res // quantiser with current dc-scaler
+ 
+    vasrr.12     workarea, workarea, 20 // add 1<<19
+    
+    vmvw.4       DCDiff, workarea // save it to DCDiff_bk0
+    
+    vmulw.4      Res, DCDiff, ScaleVec// 'DCScaler // mult diff by dc_scaler
+    
+    vaddw.4      Res, Res, Pred // add back prediction    
+    
+    // endof block 1
+    // block 2  - we know above is good as its the same MB
+     move16       DC_above, Res_bk0
+     vld16        DC_left,[CirLeft, MPO_Y_IntraPredDC_Coeff+6]
+     vld16        DC_aboveleft,[CirLeft, MPO_Y_IntraPredDC_Coeff+2]    
+     
+     vld8w        Flag_Left, [CirBuf, MPO_LeftMB]
+     move16       Flag_AboveLeft, Flag_Left
+        
+     vand.12      Flag, Flag, MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA // check if data valid
+    // if everything is good, then they will have the value 112,
+    // so set sticky if not that value
+    vsnew.12      Flag,  MBNF_VALID+MBNF_VALID_ID+MBNF_INTRA 
+  
+    vmovw.s.12    DC, 1024
+        // now have A B and C
+    move16        Diff_Left, DC_aboveleft
+    move16        Diff_Above, DC_aboveleft
+    
+    vdifw.20      Diff, Diff, DC  // abs(B - C) and abs(A - C)
+        
+    move16        DCPred, DC_above            // assume C
+ 
+    move16        tempdiff, Diff_Above         
+    vlew.f       'tempdiff, 'tempdiff, 'Diff_Left   //set condition flag if |B-C| <= |B-A|    
+    vmvw.nz      'DCPred, 'DC_left            // move left accordingly
+    move16        Pred_bk2, DCPred
+    // have DCprediction for block 2
+    
+    vsubw.16      Res, Res, Pred   // subtract prediction from actual
+    
+    vmul.48       workarea, 'DCFwdScaler, Res // quantiser with current dc-scaler
+ 
+    vasrr.48      workarea, workarea, 20 // add 1<<19
+    
+    vmvw.16       DCDiff, workarea // save it to DCDiff_bk0
+    
+    vmulw.16      Res, DCDiff, ScaleVec// 'DCScaler // mult diff by dc_scaler
+    
+    vaddw.16      Res, Res, Pred // add back prediction    
+    // end of block 2
+    
+    // block 3 - all are valid
+    move16        DC_aboveleft, Res_bk0 // must be a quicker way of doing this ?
+    move16        DC_above, Res_bk1
+    move16        DC_left,  Res_bk2
+    move16        Diff_Left, Res_bk0
+    move16        Diff_Above, Res_bk0
+     
+    vdifw.20      Diff, Diff, DC  // abs(B - C) and abs(A - C)
+        
+    move16        DCPred, DC_above            // assume C
+ 
+    move16        tempdiff, Diff_Above         
+    vlew.f       'tempdiff, 'tempdiff, 'Diff_Left   //set condition flag if |B-C| <= |B-A|    
+    vmvw.nz      'DCPred, 'DC_left            // move left accordingly
+    move16        Pred_bk3, DCPred
+     // have DCprediction for block 3
+    
+    vsubw.64      Res, Res, Pred   // subtract prediction from actual
+    
+    vmul.192      workarea, 'DCFwdScaler, Res // quantiser with current dc-scaler
+ 
+    vasrr.192     workarea, workarea, 20 // add 1<<19
+    
+    vmvw.64       DCDiff, workarea // save it to DCDiff_bk0
+    
+    vmulw.64      Res, DCDiff, ScaleVec// 'DCScaler // mult diff by dc_scaler
+    
+    vaddw.64      Res, Res, Pred // add back prediction    
+    // end of block 3
+    
+    // now we must calculate the cost of encoding all 4 DC terms
+    vmovw         Offset,  256+SDMOF_mpeg4_DC_bits_plus_256
+    vaddw         DCDiff, DCDiff, Offset  // add the LUT offset to each DC difference
+    vmvw          Res, VZERO              // zero the result area
+   // vsubw       Res, Res, Res // clear Res
+    move16        cirPtr, DCDiff_bk0        
+    vld8w        'Res_bk0, [cirPtr, 0]     // read correct entry of lookup table - number of bits
+    move16        cirPtr, DCDiff_bk1
+    vld8w        'Res_bk1, [cirPtr, 0]  
+    move16        cirPtr, DCDiff_bk2
+    vld8w        'Res_bk2, [cirPtr, 0]  
+    move16        cirPtr, DCDiff_bk3
+    vld8w        'Res_bk3, [cirPtr, 0]  
+    
+    vmovw.128     Res, 5 // mode cost of 5  - put in top lane (7)
+    vxsumw.213    Res, Res,255  //(add the 4 blocks plus the 5 - lanes 0, 2, 4, 6, 7)
+    
+    vmulw        'Res_bk0, 'Res_bk0,'Quant  // multiply by lambda = quant
+    vaddw        'cost, 'cost, 'Res_bk0     // add to SAD cost
+    
+    vst16        'cost, CirBuf, MPO_WorkArea_BestIntraLumaCost // save in circular buffer
+
+
+    // signal end of simd code
+//@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+//@   ld                  r0, [r0, 0]
+//@   mov                 r1, Service_IntraComplete
+//    vsend               r0, r1, 63
+end
+
+endfunc
+//------------------------------------------------------------------------------
+// Name:          IntraModeCost263
+// Purpose:       Calculates the Intra cost for H263 to compare against inter cost for mode decision
+//                This requires a SAD calculation as well as the number of bits used for luma DC terms (8x4)
+// Arguments:     None
+//                
+// Return Value:  void, return value is stored in Circular Buffer
+//------------------------------------------------------------------------------
+
+func.f IntraModeCost263
+
+begin
+    // function arguments
+p16 raw_dataPtr = i7 // has to be same as in subroutine CalculateDC8
+p16 block_no 
+
+p16 cirPtr
+s16 blkInOffset : cirPtr
+p16 cost = i8
+s16 QuantVal : cost
+p16 temp
+p16 blockdouble
+regmap
+    vmovw       'block_no, 0
+    vmovw       'cost, 0
+    vmovw       'temp, 0
+   
+  // main block loop starts here
+label MainLoop
+  
+  
+    move16       blockdouble, block_no
+    vaddw        'blockdouble, 'blockdouble, 'blockdouble // needed for indexing short arrays
+
+    vim          cirPtr, blockdouble, SDMOF_mpeg4_raw_pixel_offset
+  
+    vld16       'blkInOffset, [cirPtr, 0 ]
+    // set the location of the actual pixels
+    vjl     VSTACK, .CalculateDC8
+    vim          cirPtr, CirBuf, MPO_PixelCoeffBuffer  
+    vaddw       'cirPtr, 'cirPtr, blkInOffset
+    move16       raw_dataPtr, cirPtr // setup data pointer for CalculateDC8
+
+
+// end of Main Block Loop
+    vim         block_no, block_no, 1
+// check to see if we have done all blocks
+    vim         temp, block_no, -4
+    
+    vjp.temp    .MainLoop
+    vaddw        'cost, 'cost, sadval // increment cost by the sad for the block
+    vnop
+    vnop
+    // now add mode cost
+    //if 263 add 37*Quant (four lots of 8 DC bits plus 5 mode bits)
+    
+    vld8w       'QuantVal, [CirBuf, MPO_QuantValue]
+    vmulw       'QuantVal, 'QuantVal, 37
+    vaddw       'cost, 'cost, 'QuantVal
+    
+    vst16       'cost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+
+    // signal end of simd code
+//@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+//@   ld                  r0, [r0, 0]
+//@   mov                 r1, Service_IntraComplete
+//    vsend               r0, r1, 63
+end
+
+endfunc
+
+
+
+
+

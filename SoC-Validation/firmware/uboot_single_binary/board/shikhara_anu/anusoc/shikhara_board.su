@@ -1,0 +1,13 @@
+shikhara_dwmmc.h:12:28:0	16	static
+shikhara_board.c:283:6:dsi_parameter_init	0	static
+shikhara_board.c:343:6:hdmi_parameter_init	0	static
+shikhara_board.c:370:6:sound_parameter_init	0	static
+shikhara_board.c:378:5:board_init	8	static
+shikhara_board.c:415:5:dram_init	0	static
+shikhara_board.c:421:6:reset_cpu	0	static
+shikhara_board.c:427:5:board_can_init	0	static
+shikhara_board.c:444:5:smc_init_nor	0	static
+shikhara_board.c:463:5:smc_init_sram	0	static
+shikhara_board.c:478:5:board_mmc_init	8	static
+shikhara_board.c:493:6:XIo_Out32	0	static
+shikhara_board.c:499:5:XIo_In32	8	static

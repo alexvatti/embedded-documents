@@ -1,0 +1,16 @@
+halColorSpaceConverter.c:40:6:halColorSpaceConverter_Interpolation	16	static
+halColorSpaceConverter.c:47:6:halColorSpaceConverter_Decimation	16	static
+halColorSpaceConverter.c:54:6:halColorSpaceConverter_ColorDepth	16	static
+halColorSpaceConverter.c:61:6:halColorSpaceConverter_ScaleFactor	16	static
+halColorSpaceConverter.c:68:6:halColorSpaceConverter_CoefficientA1	16	static
+halColorSpaceConverter.c:76:6:halColorSpaceConverter_CoefficientA2	16	static
+halColorSpaceConverter.c:84:6:halColorSpaceConverter_CoefficientA3	16	static
+halColorSpaceConverter.c:92:6:halColorSpaceConverter_CoefficientA4	16	static
+halColorSpaceConverter.c:100:6:halColorSpaceConverter_CoefficientB1	16	static
+halColorSpaceConverter.c:108:6:halColorSpaceConverter_CoefficientB2	16	static
+halColorSpaceConverter.c:116:6:halColorSpaceConverter_CoefficientB3	16	static
+halColorSpaceConverter.c:124:6:halColorSpaceConverter_CoefficientB4	16	static
+halColorSpaceConverter.c:132:6:halColorSpaceConverter_CoefficientC1	16	static
+halColorSpaceConverter.c:140:6:halColorSpaceConverter_CoefficientC2	16	static
+halColorSpaceConverter.c:148:6:halColorSpaceConverter_CoefficientC3	16	static
+halColorSpaceConverter.c:156:6:halColorSpaceConverter_CoefficientC4	16	static

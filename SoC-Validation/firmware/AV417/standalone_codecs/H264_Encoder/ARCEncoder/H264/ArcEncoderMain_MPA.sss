@@ -1,0 +1,307 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+
+//  showstalls
+setw                108
+metaware
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable EncoderMain, 5
+
+
+
+#include "ArcMPC.h"
+#include "ArcFrameBuffers.h"
+
+
+
+//------------------------------------------------------------------------------
+// Name:          CopyCurrentChromaToSDM
+// Purpose:       Copies the chroma components of the current macroblock from
+//                main memory to the current MPC pixel data area in the SDM
+// Arguments:     mbX = horizontal position in picture in macroblocks
+//                mbY = vertical position in picture in macroblocks
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyCurrentChromaToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+
+begin
+    p16                 picX = i8
+    p16                 picY = i9
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // chroma u
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, PCB_CURRENT_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dma commands only take 32 bit scalars, however CirBuf is a 16 bit scalar
+    // that we want to and an immediate to (and store in a 32 bit scalar).
+    // however there are no instructions to do this at present, so just perform
+    // a 16 bit operation on the bottom half of the 32 scalar knowing that the
+    // previous dr1 setup left the top bits set to zero
+    // dr0: sdm address
+    vim                 dmaOutReg16, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_U
+    vdmaiset            dr0, dmaOutReg32
+
+    // dr2: block info
+    //   [7:0] = 8 = horizontal block size
+    //  [15:8] = 8 = vertical block size
+    // [20:16] = FRAME_TABLE_U_CURR_ADDR = frame table index
+@   mov                 r0, ((FRAME_TABLE_U_INDEX + FRAME_TABLE_CURR_INDEX) << 16) | 0x0808
+    vdmaiset            dr2, r0
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // convert mb co-ordinates into pixel co-ordinates in the chroma plane
+    vmulw               'picX'picY, 'mbX'mbY, 8
+
+    // start dma in
+    vdmairun            picX, picY
+
+
+    // chroma u
+
+    // top bits are still assumed to be zero here
+    // dr0: sdm address
+    vim                 dmaOutReg16, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_V
+    vdmaiset            dr0, dmaOutReg32
+
+    // this dma reg must be written after dr0, for the reasons given above
+    // dr2: block info
+    //   [7:0] = 8 = horizontal block size
+    //  [15:8] = 8 = vertical block size
+    // [20:16] = FRAME_TABLE_V_CURR_ADDR = frame table index
+@   mov                 r0, ((FRAME_TABLE_V_INDEX + FRAME_TABLE_CURR_INDEX) << 16) | 0x0808
+    vdmaiset            dr2, r0
+
+    // start dma in
+    vdmairun            picX, picY
+    
+
+//    // Send channel cmd
+//@   mov                 r0, MacroSetting_ChannelNum_MP00ToArc
+//@   ld                  r0,[r0,0]
+//@   mov                 r1, Service_ChromaDMA   // Arc routine to call when complete
+//    vsendr              r0, r1, 63
+end
+
+endfunc
+
+
+//------------------------------------------------------------------------------
+// Name:          CopyChromaPredToSDM
+// Purpose:       Copies the chroma prediction from
+//                main memory to the current MPC pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyChromaPredToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, CHROMA_WORKING_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 for chroma U and in r1 for chroma V
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_U_REF1_ADDR / FRAME_TABLE_V_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+    
+end
+
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          CopyMERefToSDM
+// Purpose:       Copies the ME reference data from
+//                main memory to the reference ME pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+func CopyMERefToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, ME_REFERENCE_ARRAY_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+    
+end
+
+endfunc
+//------------------------------------------------------------------------------
+// Name:          CopyMBLumaToSDM
+// Purpose:       Copies the MB current luma data from
+//                main memory to the MB circular buffer pixel data area in the SDM
+// Arguments:     mbX     = horizontal position in picture
+//                mbY     = vertical position in picture
+//                dr2Val  = FrameTableIndex | VertBlkSize | HorBlkSize
+// Return Value:  void
+//------------------------------------------------------------------------------
+
+func CopyMBLumaToSDM
+    p16                 mbX = i0
+    p16                 mbY = i1
+    p32                 sdmAddr = k6
+    p32                 dr2Val = k8
+
+begin
+    p16                 dmaOutReg16 = i2
+    p32                 dmaOutReg32 = k2
+
+    // this has the additional side effect of clearing the top bits of dmaOutReg32
+    // dr1: sdm stride
+    vmov                'dmaOutReg32, PCB_CURRENT_STRIDE
+    vdmaiset            dr1, dmaOutReg32
+
+    // dr0: sdm address
+    vdmaiset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE_Y_REF1_ADDR
+    vdmaiset            dr2, dr2Val
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //  [1:0] = "10" = non-interlaced clip mode
+    //    [2] =  '0' = disable double linestride
+    // [15:8] =  n/a = clip value
+    vmov                'dmaOutReg32, 0x2
+    vdmaiset            dr6, dmaOutReg32
+
+    // dr7: frame table base address
+    vmov                'dmaOutReg32, SDMOF_FrameTabDMA
+    vdmaiset            dr7, dmaOutReg32
+
+    // start dma in
+    vdmairun            mbX, mbY
+    
+    
+end
+
+endfunc

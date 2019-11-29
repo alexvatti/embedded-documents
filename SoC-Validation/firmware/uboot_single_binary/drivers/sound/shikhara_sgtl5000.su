@@ -1,0 +1,7 @@
+shikhara_sgtl5000.c:54:12:sgtl5000_i2c_write	24	static
+shikhara_sgtl5000.c:39:21:sgtl5000_i2c_read	16	static
+shikhara_sgtl5000.c:143:12:sgtl5000_codec_id	16	static
+shikhara_sgtl5000.c:63:5:sgtl5000_update	32	static
+shikhara_sgtl5000.c:155:5:i2s_codec_post	8	static
+shikhara_sgtl5000.c:174:5:sgtl5000_do_init	16	static
+shikhara_sgtl5000.c:436:5:sgtl5000_init	32	static

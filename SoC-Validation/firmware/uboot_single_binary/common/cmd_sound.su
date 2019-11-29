@@ -1,0 +1,7 @@
+cmd_sound.c:183:12:do_hdmi	24	static
+cmd_sound.c:162:12:do_sound	24	static
+cmd_sound.c:51:12:do_hdmi_init	8	static
+cmd_sound.c:204:12:cmd_beep	8	static
+cmd_sound.c:94:12:do_play	16	static
+cmd_sound.c:38:12:do_init	8	static
+cmd_sound.c:65:12:do_hdmi_play	16	static

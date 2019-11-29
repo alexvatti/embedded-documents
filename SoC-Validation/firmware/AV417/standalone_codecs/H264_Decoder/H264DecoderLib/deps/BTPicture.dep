@@ -1,0 +1,5 @@
+
+BTPicture.o:	./H264DecoderLib/VideoCommon/BTPicture.cpp \
+	./H264DecoderLib/VideoCommon/BTPicture.h \
+	./H264DecoderLib/memctl.h \
+	./H264DecoderLib/H264SIMDDec/ARCMedia.h 

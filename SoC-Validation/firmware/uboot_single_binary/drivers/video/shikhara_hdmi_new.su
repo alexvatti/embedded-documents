@@ -1,0 +1,3 @@
+shikhara_hdmi_new.c:219:5:shikhara_hdmi_init	16	static
+shikhara_hdmi_new.c:124:5:shikhara_hdmi_uninit	8	static
+shikhara_hdmi_new.c:97:5:shikhara_hdmi_reinit	16	static

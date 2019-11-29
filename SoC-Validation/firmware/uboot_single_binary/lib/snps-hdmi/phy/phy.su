@@ -1,0 +1,10 @@
+phy.c:21:5:phy_Initialize	16	static
+phy.c:985:5:phy_Standby	16	static
+phy.c:997:5:phy_EnableHpdSense	8	static
+phy.c:1005:5:phy_DisableHpdSense	8	static
+phy.c:1013:5:phy_HotPlugDetected	16	static
+phy.c:1033:5:phy_InterruptEnable	16	static
+phy.c:1040:5:phy_TestControl	16	static
+phy.c:1051:5:phy_TestData	16	static
+phy.c:1061:5:phy_I2cWrite	16	static
+phy.c:69:5:phy_Configure	32	static

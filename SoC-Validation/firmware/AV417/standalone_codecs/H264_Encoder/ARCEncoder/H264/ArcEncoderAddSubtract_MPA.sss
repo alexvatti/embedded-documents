@@ -1,0 +1,343 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+
+showstalls
+setw                108
+metaware
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable EncoderAddSubtract, 3
+
+
+
+#include "ArcMPC.h"
+#include "ArcFrameBuffers.h"
+
+
+// Reconstructed buffer
+//                PCB_RECONSTRUCTED_STRIDE
+//                  /
+//      |----------+-----------|
+//              1111111111222222
+//      012345678901234567890123
+// 0    *xxxxxxxAAAAAAAAAAAAAAAA        *   PCB_RECONSTRUCTED_Y
+// 1    xxxxxxxxAAAAAAAAAAAAAAAA
+// 2    xxxxxxxxAAAAAAAAAAAAAAAA
+// 3    xxxxxxxxAAAAAAAAAAAAAAAA
+// 4    xxxxLLLL0000000011111111
+// 5    xxxxLLLL0000000011111111
+// 6    xxxxLLLL0000000011111111
+// 7    xxxxLLLL0000000011111111
+// 8    xxxxLLLL0000000011111111
+// 9    xxxxLLLL0000000011111111
+//10    xxxxLLLL0000000011111111
+//11    xxxxLLLL0000000011111111
+//12    xxxxLLLL2222222233333333
+//13    xxxxLLLL2222222233333333
+//14    xxxxLLLL2222222233333333
+//15    xxxxLLLL2222222233333333
+//16    xxxxLLLL2222222233333333
+//17    xxxxLLLL2222222233333333
+//18    xxxxLLLL2222222233333333
+//19    xxxxLLLL2222222233333333
+//20    #xxxxxxxxxxx@xxxxxxxxxxx        #   PCB_RECONSTRUCTED_U     @ PCB_RECONSTRUCTED_V
+//21    xxxxxxxxxxxxxxxxxxxxxxxx
+//22    xxxxAAAAAAAAxxxxAAAAAAAA
+//23    xxxxAAAAAAAAxxxxAAAAAAAA
+//24    xxLL44444444xxLL55555555
+//25    xxLL44444444xxLL55555555
+//26    xxLL44444444xxLL55555555
+//27    xxLL44444444xxLL55555555
+//28    xxLL44444444xxLL55555555
+//29    xxLL44444444xxLL55555555
+//30    xxLL44444444xxLL55555555
+//31    xxLL44444444xxLL55555555
+
+
+//------------------------------------------------------------------------------
+// Name:          ReconstructLuma16X16
+// Purpose:       Computes the reconstructed luma block by adding the prediction
+//                data to the prediction block, clipping to [0:255] then storing 
+//                the result in the reconstructed data buffer in SDM
+// Arguments:     ea     = residual block address in SDM
+//                pa     = prediction address in SDM
+//                ra     = reconstructed block address in SDM
+// Return Value:  void
+//------------------------------------------------------------------------------
+func ReconstructLuma16X16
+    p16                 ea = i0
+    p16                 pa = i1
+    p16                 ra = i2
+begin
+    p16                 lpCnt       // loop count
+
+    vec16               errLane0
+    vec16               errLane1
+    vec16               errLane2
+    vec16               errLane3
+
+    vec16               predLane0
+    vec16               predLane1
+    vec16               predLane2
+    vec16               predLane3
+    
+    // Initialise the loop count
+    // The luma MB (16x16) is divided into 8 slices of 2 rows each.
+    // One slice is processed per iteration
+    vmovw               'lpCnt, 7
+    
+label LpStart    
+    vld128              errLane0, [ea, 0*16]
+    vld128              errLane1, [ea, 1*16]
+    vld128              errLane2, [ea, 2*16]
+    vld128              errLane3, [ea, 3*16]
+
+    vld64w              predLane0, [pa, 0*8]
+    vld64w              predLane1, [pa, 1*8]
+    vld64w              predLane2, [pa, 2*8]
+    vld64w              predLane3, [pa, 3*8]
+    
+    vaddw               errLane0, errLane0, predLane0
+    vaddw               errLane1, errLane1, predLane1
+    vaddw               errLane2, errLane2, predLane2
+    vaddw               errLane3, errLane3, predLane3
+    
+    vasrpwb             errLane0, errLane0, 0
+    vasrpwb             errLane1, errLane1, 0
+    vasrpwb             errLane2, errLane2, 0
+    vasrpwb             errLane3, errLane3, 0
+    
+    vst64               errLane0, [ra, 1*8]
+    vst64               errLane1, [ra, 2*8]
+    vst64               errLane2, [ra, 4*8]
+    vst64               errLane3, [ra, 5*8]
+    
+    // decrement the loop count and jump back at the loop start
+    // if loop count is non-zero. The buffer pointers are updated
+    // during the 3 cycle delay slot
+    vjd.lpCnt           lpCnt, .LpStart
+    vim                 ea, ea, 64
+    vim                 pa, pa, 32
+    vim                 ra, ra, 48
+    
+    
+end
+
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          ReconstructChroma
+// Purpose:       Computes the reconstructed chroma block by adding the prediction
+//                data to the prediction block, clipping to [0:255] then storing 
+//                the result in the reconstructed data buffer in SDM
+// Arguments:     ea     = residual block address in SDM
+//                pa     = prediction address in SDM
+//                ra     = reconstructed block address in SDM
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f ReconstructChroma
+    p16                 ea = i0
+    p16                 pa = i1
+    p16                 ra = i2
+begin
+    p16                 lpCnt       // loop count
+
+    vec16               UerrLane0
+    vec16               UerrLane1
+    vec16               UerrLane2
+    vec16               UerrLane3
+
+    vec16               UpredLane0
+    vec16               UpredLane1
+    vec16               UpredLane2
+    vec16               UpredLane3
+
+    vec16               VerrLane0
+    vec16               VerrLane1
+    vec16               VerrLane2
+    vec16               VerrLane3
+
+    vec16               VpredLane0
+    vec16               VpredLane1
+    vec16               VpredLane2
+    vec16               VpredLane3
+    
+    // Initialise the loop count
+    // The chroma block (8x8) is divided into 2 slices of 4 rows each.
+    // One slice is processed per iteration
+    vmovw               'lpCnt, 1
+    
+label LpStart    
+    vld128              UerrLane0, [ea, 0*32]
+    vld128              UerrLane1, [ea, 1*32]
+    vld128              UerrLane2, [ea, 2*32]
+    vld128              UerrLane3, [ea, 3*32]
+    vld128              VerrLane0, [ea, 0*32+16]
+    vld128              VerrLane1, [ea, 1*32+16]
+    vld128              VerrLane2, [ea, 2*32+16]
+    vld128              VerrLane3, [ea, 3*32+16]
+
+    vld64w              UpredLane0, [pa, 0*16]
+    vld64w              UpredLane1, [pa, 1*16]
+    vld64w              UpredLane2, [pa, 2*16]
+    vld64w              UpredLane3, [pa, 3*16]
+    vld64w              VpredLane0, [pa, 0*16+8]
+    vld64w              VpredLane1, [pa, 1*16+8]
+    vld64w              VpredLane2, [pa, 2*16+8]
+    vld64w              VpredLane3, [pa, 3*16+8]
+    
+    vaddw               UerrLane0, UerrLane0, UpredLane0
+    vaddw               UerrLane1, UerrLane1, UpredLane1
+    vaddw               UerrLane2, UerrLane2, UpredLane2
+    vaddw               UerrLane3, UerrLane3, UpredLane3
+    vaddw               VerrLane0, VerrLane0, VpredLane0
+    vaddw               VerrLane1, VerrLane1, VpredLane1
+    vaddw               VerrLane2, VerrLane2, VpredLane2
+    vaddw               VerrLane3, VerrLane3, VpredLane3
+    
+    vasrpwb             UerrLane0, UerrLane0, 0
+    vasrpwb             UerrLane1, UerrLane1, 0
+    vasrpwb             UerrLane2, UerrLane2, 0
+    vasrpwb             UerrLane3, UerrLane3, 0
+    vasrpwb             VerrLane0, VerrLane0, 0
+    vasrpwb             VerrLane1, VerrLane1, 0
+    vasrpwb             VerrLane2, VerrLane2, 0
+    vasrpwb             VerrLane3, VerrLane3, 0
+    
+    vst32_0             UerrLane0, [ra, 0*24+4]
+    vst32_2             UerrLane0, [ra, 0*24+8]
+    vst32_0             UerrLane1, [ra, 1*24+4]
+    vst32_2             UerrLane1, [ra, 1*24+8]
+    vst32_0             UerrLane2, [ra, 2*24+4]
+    vst32_2             UerrLane2, [ra, 2*24+8]
+    vst32_0             UerrLane3, [ra, 3*24+4]
+    vst32_2             UerrLane3, [ra, 3*24+8]
+    vst32_0             VerrLane0, [ra, 0*24+16]
+    vst32_2             VerrLane0, [ra, 0*24+20]
+    vst32_0             VerrLane1, [ra, 1*24+16]
+    vst32_2             VerrLane1, [ra, 1*24+20]
+    vst32_0             VerrLane2, [ra, 2*24+16]
+    vst32_2             VerrLane2, [ra, 2*24+20]
+    vst32_0             VerrLane3, [ra, 3*24+16]
+    vst32_2             VerrLane3, [ra, 3*24+20]
+    
+    // decrement the loop count and jump back at the loop start
+    // if loop count is non-zero. The buffer pointers are updated
+    // during the 3 cycle delay slot
+    vjd.lpCnt           lpCnt, .LpStart
+    vim                 ea, ea, 128
+    vim                 pa, pa, 64
+    vim                 ra, ra, 96    
+    
+end
+
+endfunc
+
+//------------------------------------------------------------------------------
+// Name:          ReconstructSkipped
+// Purpose:       Copies the skipped prediction into the 
+//                reconstructed data buffer in SDM
+// Arguments:     pa     = prediction block address in SDM
+//                ra     = reconstructed block address in SDM
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f ReconstructSkipped
+    p16                 pa = i0
+    p16                 ra = i1
+begin
+    p16                 lpCnt       // loop count
+
+    vec16               predLane0
+    vec16               predLane1
+    vec16               predLane2
+    vec16               predLane3
+
+    //----------------------
+    // Luma
+    //----------------------
+    // Initialise the loop count
+    // The luma MB is divided into 4 slices of 4 rows each.
+    // One slice is processed per iteration
+    vmovw               'lpCnt, 3
+    
+label YLpStart    
+    vld128               predLane0, [pa, 0*16]
+    vld128               predLane1, [pa, 1*16]
+    vld128               predLane2, [pa, 2*16]
+    vld128               predLane3, [pa, 3*16]
+    
+    vst64                predLane0, [ra, 0*24+8]
+    vst32_4              predLane0, [ra, 0*24+16]
+    vst32_6              predLane0, [ra, 0*24+20]
+    vst64                predLane1, [ra, 1*24+8]
+    vst32_4              predLane1, [ra, 1*24+16]
+    vst32_6              predLane1, [ra, 1*24+20]
+    vst64                predLane2, [ra, 2*24+8]
+    vst32_4              predLane2, [ra, 2*24+16]
+    vst32_6              predLane2, [ra, 2*24+20]
+    vst64                predLane3, [ra, 3*24+8]
+    vst32_4              predLane3, [ra, 3*24+16]
+    vst32_6              predLane3, [ra, 3*24+20]
+    
+    // decrement the loop count and jump back at the loop start
+    // if loop count is non-zero. The buffer pointers are updated
+    // during the 3 cycle delay slot
+    vjd.lpCnt           lpCnt, .YLpStart
+    vim                 pa, pa, 64
+    vim                 ra, ra, 96
+    vnop
+   
+   
+    //----------------------
+    // Chroma
+    //----------------------
+    vim                 ra, ra, 96
+    // Initialise the loop count
+    // The Chroma blocks are divided into 4 slices of 2 rows each.
+    // One slice is processed per iteration
+    vmovw               'lpCnt, 3
+    
+label UVLpStart    
+    vld64                predLane0, [pa, 0*8]
+    vld64                predLane1, [pa, 1*8]
+    vld64                predLane2, [pa, 2*8]
+    vld64                predLane3, [pa, 3*8]
+    
+    vst32_0              predLane0, [ra, 0*12+4]
+    vst32_2              predLane0, [ra, 0*12+8]
+    vst32_0              predLane1, [ra, 1*12+4]
+    vst32_2              predLane1, [ra, 1*12+8]
+    vst32_0              predLane2, [ra, 2*12+4]
+    vst32_2              predLane2, [ra, 2*12+8]
+    vst32_0              predLane3, [ra, 3*12+4]
+    vst32_2              predLane3, [ra, 3*12+8]
+    
+    // decrement the loop count and jump back at the loop start
+    // if loop count is non-zero. The buffer pointers are updated
+    // during the 3 cycle delay slot
+    vjd.lpCnt           lpCnt, .UVLpStart
+    vim                 pa, pa, 32
+    vim                 ra, ra, 48
+    vnop
+    
+    
+end
+
+endfunc

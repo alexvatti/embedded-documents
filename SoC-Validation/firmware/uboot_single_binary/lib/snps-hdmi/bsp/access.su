@@ -1,0 +1,8 @@
+access.c:16:5:access_Initialize	8	static
+access.c:26:5:access_Standby	8	static
+access.c:36:4:access_CoreReadByte	16	static
+access.c:45:4:access_CoreRead	16	static
+access.c:88:4:access_Read	0	static
+access.c:104:6:access_Write	16	static
+access.c:63:6:access_CoreWrite	24	static
+access.c:56:6:access_CoreWriteByte	16	static

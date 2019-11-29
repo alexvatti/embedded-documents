@@ -1,0 +1,2 @@
+bootm.c:57:6:arch_lmb_reserve	0	static
+bootm.c:353:5:do_bootm_linux	16	static

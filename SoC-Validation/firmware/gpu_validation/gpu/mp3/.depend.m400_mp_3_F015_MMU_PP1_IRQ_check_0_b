@@ -1,0 +1,3 @@
+m400_mp_3_F015_MMU_PP1_IRQ_check_0_b.o: \
+ m400_mp_3_F015_MMU_PP1_IRQ_check_0_b.c \
+ m400_mp_3_F015_MMU_PP1_IRQ_check_0_b.h

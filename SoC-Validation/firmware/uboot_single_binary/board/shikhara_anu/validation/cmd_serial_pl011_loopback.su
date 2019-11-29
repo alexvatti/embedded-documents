@@ -1,0 +1,5 @@
+cmd_serial_pl011_loopback.c:31:5:shikhara_serial_init	0	static
+cmd_serial_pl011_loopback.c:71:6:shikhara_pl01x_putc	0	static
+cmd_serial_pl011_loopback.c:81:5:shikhara_pl01x_getc	0	static
+cmd_serial_pl011_loopback.c:101:5:uart_post	16	static
+cmd_serial_pl011_loopback.c:127:5:do_loopback_test	8	static

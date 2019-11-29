@@ -1,0 +1,4 @@
+halAudioHbr.c:20:6:halAudioHbr_ResetFifo	8	static
+halAudioHbr.c:26:6:halAudioHbr_Select	16	static
+halAudioHbr.c:32:6:halAudioHbr_InterruptMask	16	static
+halAudioHbr.c:38:6:halAudioHbr_InterruptPolarity	16	static

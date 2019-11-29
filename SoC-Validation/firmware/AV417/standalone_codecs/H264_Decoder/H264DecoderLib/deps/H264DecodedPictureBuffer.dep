@@ -1,0 +1,13 @@
+
+H264DecodedPictureBuffer.o:	\
+	./H264DecoderLib/H264Decoder/H264DecodedPictureBuffer.cpp \
+	./H264DecoderLib/H264Common/H264Warnings.h \
+	./H264DecoderLib/VideoCommon/BTPicture.h \
+	./H264DecoderLib/H264Common/H264MotionVectorList.h \
+	./H264DecoderLib/H264Common/H264EnumTypes.h \
+	./H264DecoderLib/H264Decoder/H264DecoderControl.h \
+	./H264DecoderLib/H264Decoder/H264DecodedPictureBuffer.h \
+	./H264DecoderLib/H264Common/H264SEIParameters.h \
+	./H264DecoderLib/H264Common/H264OffsetTables.h \
+	./H264DecoderLib/H264Common/H264Tables.h \
+	./H264DecoderLib/vbuf.h 

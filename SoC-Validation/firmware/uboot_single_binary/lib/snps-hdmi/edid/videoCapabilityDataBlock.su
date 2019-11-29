@@ -1,0 +1,6 @@
+videoCapabilityDataBlock.c:13:6:videoCapabilityDataBlock_Reset	0	static
+videoCapabilityDataBlock.c:22:5:videoCapabilityDataBlock_Parse	24	static
+videoCapabilityDataBlock.c:42:4:videoCapabilityDataBlock_GetCeScanInfo	0	static
+videoCapabilityDataBlock.c:48:4:videoCapabilityDataBlock_GetItScanInfo	0	static
+videoCapabilityDataBlock.c:54:4:videoCapabilityDataBlock_GetPreferredTimingScanInfo	0	static
+videoCapabilityDataBlock.c:60:5:videoCapabilityDataBlock_GetQuantizationRangeSelectable	0	static

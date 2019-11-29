@@ -1,0 +1,2 @@
+cmd_clcd_preview.c:36:5:preview_on_clcd	20	static
+cmd_clcd_preview.c:16:6:do_preview_on_lcd	8	static

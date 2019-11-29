@@ -1,0 +1,5 @@
+keyboard.c:73:12:kbd_testc	8	static
+keyboard.c:90:12:kbd_getc	8	static
+keyboard.c:55:6:kbd_put_queue	0	static
+keyboard.c:144:6:handle_scancode	0	static
+keyboard.c:274:5:kbd_init	72	static

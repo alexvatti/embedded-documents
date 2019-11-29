@@ -1,0 +1,1663 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+ // showstalls
+    setw                108
+    metaware
+
+    include "../ARC/SIMD_ABI.ii"
+
+    macrotable          Deblock,12
+
+    strict
+#include "ArcMPC.h"
+#include "ArcSDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+
+#define BigButSafe 2000 // nice big number that won't overflow anything
+
+//----------------------------------------------------------------------------------------------------
+// Deblock register workspace
+    s16                     chromaQp : i0
+    s16                     ChromaQ_IdxOffset : i0
+    s16                     BlkIntra                // 0xfff when current block  intra
+    s16                     LeftIntra               // 0xfff when left block  intra
+    s16                     AboveIntra              // 0xfff when above block  intra
+    s16                     InternalYab
+    s16                     InternalUVab
+    s16                     lumaNzCoef
+    vec16                   filStrength             // 4 x Filter strengths
+    vec16                   initFilStrength
+    vec16                   abIdxsY                 // Filter params luma
+    vec16                   abIdxsUV                // Filter params chroma
+    p16                     leftDbValid = i14       // Same slice & ....
+    p16                     aboveDbValid = i15      // Same slice & ....
+//----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+ begin
+// Horizontal deblock common vars
+    vec16                   strongFilter            // 4 x strong filter flags
+
+
+//----------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init members of MPC circular buffer
+// Sets CirBuf
+// Sets FixBuf
+// Sets CirLeft
+func                    SetCurrentMPC1
+    // Params -----------
+    p16                 cIdx            // Circular buffer index
+    p16                 Column          // MacroBlock column
+    p16                 leftIdx         // Circular buffer index of macro block to left
+    // End params -------
+    pubreg              cIdx, Column, leftIdx
+// Setup pointers
+    vmulw               'cIdx'leftIdx, 'cIdx'leftIdx, MPO_SIZE_OF_CIRCULAR_BUF_ENTRY
+    vmulw               'Column, 'Column, MPO_SIZE_OF_FIXED_ENTRY
+    vim                 CirBuf, cIdx, SDMOF_CircularBuffs
+    vim                 FixBuf, Column, SDMOF_FixedBuffs
+    vim                 CirLeft, leftIdx, SDMOF_CircularBuffs
+    
+    
+endfunc
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Moves MPC circular buffer members from circular buffer up to fixed
+// Assumes current MPC is set
+
+func 					CopyToFixedAfterReconstructH264 			// function moved here
+    vec16               luma,chromaU,chromaV
+    vld128              luma,[CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + 19*PCB_RECONSTRUCTED_STRIDE + 8]
+    vld32               chromaU,[CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*11 + 4]
+    vld32_2             chromaU,[CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*11 + 4 + 4]
+    vld32               chromaV,[CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*11 + 4]
+    vld32_2             chromaV,[CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*11 + 4 + 4]
+
+    vst128              luma,[FixBuf, MPO_Y_IntraPredPixel]
+    vst64               chromaU,[FixBuf,MPO_U_IntraPredPixel]
+    vst64               chromaV,[FixBuf,MPO_V_IntraPredPixel]
+
+// Y and U/V coeffs
+    s32                 lcf,ccf
+    vld32               lcf,[CirBuf, MPO_CoeffCountSB + 8]
+    vld32               ccf,[CirBuf, MPO_CoeffCountSB + 12]
+    vst32               lcf,[FixBuf, MPO_Intra4x4ModeCoeffCountSB + 8]
+    vst32               ccf,[FixBuf, MPO_Intra4x4ModeCoeffCountSB + 12]
+    
+endfunc					// CopyToFixedAfterReconstructH264
+
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Assumes current MPC is setup
+// General setup coded required per macro block
+
+func.f                      DeblockMacroBlockSetup
+    // Params -----------
+    p16                     chromaQIO           // MgrMPC.Deblock.ChromaQ_IdxOffset
+    p16                     DeblockMode         // MgrMPC.Deblock.Mode
+    
+    pubreg                  chromaQIO, DeblockMode
+    // End params -------
+ begin
+    s16:chromaQIO           QuantValue 
+    
+
+    vmvw                    ChromaQ_IdxOffset, 'chromaQIO
+    vld8w                   QuantValue, [CirBuf, MPO_QuantValue]
+    vaddw                   chromaQp, QuantValue, chromaQIO
+    vaddw                   'chromaQIO, chromaQp, 16 + SDMOF_h264_quantiser_chroma_mapping_tableClipping
+    vld8w                   chromaQp, [chromaQIO, 0]
+
+
+
+// Test neighbours for being intra
+    vld8w                   BlkIntra,[CirBuf, MPO_MBCodingType]
+    vld8w                   LeftIntra,[CirLeft, MPO_MBCodingType]
+    vld8w                   AboveIntra,[FixBuf, MPO_MBCodingType]
+    vmovw                   'leftDbValid'aboveDbValid, 0
+    vand                    'BlkIntra'LeftIntra'AboveIntra , 'BlkIntra'LeftIntra'AboveIntra, MBCT_H264_INTRA
+    vnew                    'BlkIntra'LeftIntra'AboveIntra, 'BlkIntra'LeftIntra'AboveIntra , VZERO
+
+// Calculate the luma and chroma a and b indices for centre, left and top edges
+// Centre edges, depends only on this macroblock's quant
+    move16                  InternalYab, QuantValue
+    move16                  InternalUVab, chromaQp
+    vsubw                   'InternalYab'InternalUVab,  'InternalYab'InternalUVab, 15
+    vminw                   'InternalYab'InternalUVab,  'InternalYab'InternalUVab, 36
+    vmvw                    strongFilter, VZERO
+    vmaxw                   'InternalYab'InternalUVab,  'InternalYab'InternalUVab, 0
+
+
+
+    // Pre-process left neighbours into 16bit mask
+    s16:lumaNzCoef          lumcTmp, lumcMsk
+    vld16                   lumaNzCoef,[CirBuf, MPO_NonZeroCoeffLuma]
+    vmovw                   lumcMsk, 0x7777                 // vband can only do 15 bits
+    vand                    lumcTmp, lumaNzCoef, lumcMsk
+    vaddw                   lumcTmp, lumcTmp, lumcTmp       // lumaNzCoef=  lumaNzCoef | lumcTmp + lumcTmp
+    vor                     lumaNzCoef, lumaNzCoef, lumcTmp
+
+    p16                     isIntra
+    move16                  isIntra, BlkIntra
+    p16                     leftBad = i8
+    vld8w                   'leftBad, [CirBuf, MPO_LeftMB]
+    vmovw.isIntra           filStrength, 3
+    vmovw!isIntra           filStrength, 0
+    vand                    'isIntra, 'isIntra, 1   // Convert to 1 or zero
+    vmovw.isIntra           strongFilter, 1
+
+    vand                    'leftBad, 'leftBad, MBNF_VALID
+    vjp!leftBad             .NoLeft
+~   veqw                    'leftBad, 'leftBad, VZERO           // 0xffff if not ok
+~   vor.1                   filStrength, filStrength, 'leftBad
+
+~   s16:QuantValue          avgLumaQ, avgChromQ            // Average luma quant,  Average chroma quant
+
+~   vld8w                   avgLumaQ, [CirLeft, MPO_QuantValue]
+    vaddw                   avgChromQ, avgLumaQ, ChromaQ_IdxOffset
+    vaddw                   avgLumaQ, QuantValue, avgLumaQ
+    vasrrw                  avgLumaQ, avgLumaQ, 1
+    p16                     Temp
+    move16                  Temp, avgChromQ
+    regmap
+    vaddw                   'Temp, 'Temp, 16 + SDMOF_h264_quantiser_chroma_mapping_tableClipping
+    vld8w                   avgChromQ, [Temp, 0]
+    // Pre-process left neighbours into 16bit mask
+    vld16                   lumcTmp, [CirLeft, MPO_NonZeroCoeffLuma]
+    vaddw                   avgChromQ, avgChromQ, chromaQp
+    vmovw                   lumcMsk, 0x1111
+    vasrrw                  avgChromQ, avgChromQ, 1
+    vlsrw                   lumcTmp, lumcTmp, 3
+    vsubw                   avgLumaQ, avgLumaQ, 15  //CLIP_FOR_FILTER(average_luma_quant - 15)
+    vand                    lumcTmp, lumcTmp, lumcMsk
+    vsubw                   avgChromQ, avgChromQ, 15 // CLIP_FOR_FILTER(average_chroma_quant - 15)
+    vor                     lumaNzCoef, lumaNzCoef, lumcTmp
+    vminw                   avgLumaQ, avgLumaQ, 36
+    vminw                   avgChromQ, avgChromQ, 36
+    vmaxw                   avgLumaQ, avgLumaQ, 0
+    vmaxw                   avgChromQ, avgChromQ, 0
+    vmvw.1                  abIdxsY, avgLumaQ               // abIdxsY[0]
+    vmvw.1                  abIdxsUV, avgChromQ             // abIdxsUV[0]
+
+ end
+
+ begin
+    s16                     LeftCoID :i0
+    s16:LeftCoID            CurCoID, mTmp
+    move16                  mTmp, DeblockMode
+    vld8w                   LeftCoID, [CirLeft ,MPO_CollectionID]
+    vld8w                   CurCoID, [CirBuf ,MPO_CollectionID]
+    vclrstk
+    vseqw                   mTmp, 2
+    vsnew.s                 LeftCoID, CurCoID
+    vmovw.{LeftCoID}.s      filStrength, -1
+    move16                  mTmp, LeftIntra
+    vtall.{LeftCoID}!s      leftDbValid,0xffff
+    vsubw!s.f               VZERO, mTmp , 0
+    vmovw.{LeftCoID}!s.nz   strongFilter, 1
+    vmovw.{LeftCoID}!s.nz   filStrength, 3
+ end
+
+label NoLeft
+
+ begin  // Above valid for deblock
+    s16:aboveDbValid        aboveID, CurCoID, mTmp
+
+    vld8w                   'aboveDbValid, [CirBuf, MPO_AboveMB]
+    vld8w                   aboveID, [FixBuf ,MPO_CollectionID]
+    vld8w                   CurCoID, [CirBuf ,MPO_CollectionID]
+    move16                  mTmp, DeblockMode
+    vand                    'aboveDbValid,'aboveDbValid, MBNF_VALID
+    vsnew                   mTmp, 2                 // mode != 2 || aboveID == CurCoID
+    vxsumw.0xe              abIdxsY, InternalYab,{InternalYab}
+    vseqw!s                 aboveID, CurCoID
+    vsnew.s                 'aboveDbValid, 0
+    vxsumw.0xe              abIdxsUV, InternalUVab,{InternalUVab}
+    vtall.{aboveDbValid}.s  aboveDbValid, 0xffff
+ 
+    vmvw                    initFilStrength, filStrength
+
+ end
+
+endfunc
+
+
+
+
+
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Assumes current MPC is setup
+// Copies pixel data from above & left buffers ready for deblock
+func.f                  DeblockFetchPixelsFromNeigbours
+    // Params -----------
+    // End params -------
+// Test if above & left exists
+    p16                     AboveFlags, LeftFlags
+    vec16                   IsValid
+
+    vld8w                   'LeftFlags,[CirBuf, MPO_LeftMB]
+    vld8w                   'AboveFlags,[CirBuf, MPO_AboveMB]
+    vand                    'AboveFlags'LeftFlags, 'AboveFlags'LeftFlags, MBNF_VALID       // above, left exist?
+    vjp!AboveFlags          .noAbove
+
+~ begin
+// Copy 4 pix high block from fixed to top of current
+// Luma
+~   vec16                   lumaL,lumaH
+~   p16                     fixPtr,lcnt,cirPtr
+
+~   vim                     fixPtr, FixBuf, 0
+~   vim                     cirPtr, CirBuf, 0
+~   vmovw                   'lcnt,4-1   // Do 4 times
+ label aboveLoop
+    vld64                   lumaL, [fixPtr, MPO_Y_HorizPixelStore0]
+    vld64                   lumaH, [fixPtr, MPO_Y_HorizPixelStore0+8]
+    vim                     fixPtr, fixPtr, 16
+    vjd.lcnt                lcnt, .aboveLoop
+~   vst64                   lumaL, [cirPtr, MPO_PixelCoeffBuffer + 8]
+~   vst64                   lumaH, [cirPtr, MPO_PixelCoeffBuffer + 8 + 8]
+~   vim                     cirPtr, cirPtr, PCB_RECONSTRUCTED_STRIDE
+// Chroma
+    vec16                   chromaU0,chromaU1,chromaV0,chromaV1
+
+    vld64                   chromaU0, [FixBuf, MPO_U_HorizPixelStore0]
+    vld64                   chromaU1, [FixBuf, MPO_U_HorizPixelStore1]
+    vld64                   chromaV0, [FixBuf, MPO_V_HorizPixelStore0]
+    vld64                   chromaV1, [FixBuf, MPO_V_HorizPixelStore1]
+
+    vst32                   chromaU0, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(2) + 4]
+    vst32_2                 chromaU0, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(2) + 4 + 4]
+    vst32                   chromaU1, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(3) + 4]
+    vst32_2                 chromaU1, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(3) + 4 + 4]
+    vst32                   chromaV0, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(2) + 4]
+    vst32_2                 chromaV0, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(2) + 4 + 4]
+    vst32                   chromaV1, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(3) + 4]
+    vst32_2                 chromaV1, [CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(3) + 4 + 4]
+ end
+
+ label noAbove
+    vjp!LeftFlags           .noLeft
+
+~ begin
+// Copy 4 pix wide luma from right edge of block to left
+// to left edge of current
+// Luma
+~   s32                     luma
+~   p16                     left, current, offset, lCount
+
+~    vmovw                   'lCount, 20-1   // 20 times
+~    vim                     left, CirLeft, MPO_PixelCoeffBuffer + 20
+~    vim                     current, CirBuf, MPO_PixelCoeffBuffer + 4 - PCB_RECONSTRUCTED_STRIDE
+ label leftLoopLuma
+    vjd.lCount              lCount,.leftLoopLuma
+~   vld32                   luma,[left,0]
+~   vaddw                   'left'current,'left'current, PCB_RECONSTRUCTED_STRIDE
+~   vst32                   luma, [current,0]
+
+// Chroma
+    s16                     chromaU, chromaV
+    vmovw                   'lCount, 12-1   // 12 times
+    vim                     left, CirLeft, MPO_PixelCoeffBuffer
+    vim                     current, CirBuf, MPO_PixelCoeffBuffer - PCB_RECONSTRUCTED_STRIDE
+ label leftLoopChroma
+    vld16                   chromaU, [left, PCB_RECONSTRUCTED_U + 10]
+    vld16                   chromaV, [left, PCB_RECONSTRUCTED_V + 10]
+    vjd.lCount              lCount, .leftLoopChroma
+~   vaddw                   'left'current,'left'current, PCB_RECONSTRUCTED_STRIDE
+~   vst16                   chromaU, [current, PCB_RECONSTRUCTED_U + 2]
+~   vst16                   chromaV, [current, PCB_RECONSTRUCTED_V + 2]
+ end
+
+ label noLeft
+
+endfunc
+
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Assumes current MPC is setup
+// Horizonal deblock edges
+func.f                  HorizontalDeblock
+    // Params -----------
+    // End params -------
+
+    p16                     lumaPtr, chromaPtr
+
+    vim                     lumaPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + 8 - 4
+    vim                     chromaPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*4
+
+
+// Build a 4 entry jump vector (in lumaJmp, chromaJmp) & deblock parrams for inner loop SIMD style
+
+// Loop over each row of sub macroblocks
+    p16                     c8x8, l8x8
+    p16                     row
+    vec16                   mvXY,CmvXY,mvd
+    vec16                   const4
+    p16                     coefMsk
+    vmovw                   const4,4
+    vmovw                   'row,0
+    vmvw                    filStrength, initFilStrength
+    vmovw.240               filStrength, -1
+    move16                  coefMsk,lumaNzCoef
+
+label HorRowLoop
+    // Sticky flags hold mv diff >= 4 flags
+    via                     c8x8,row, 1
+    vjp.c8x8                .NotRow0or2
+~   vmivw                   'c8x8'l8x8, row                     // rows 0 & 2
+~   vaddw                   'c8x8'l8x8, 'c8x8'l8x8, 'c8x8'l8x8 // * sizeof MV_t (2)
+~   vaddw                   'l8x8, 'l8x8, CirLeft
+    vaddw                   'c8x8, 'c8x8, CirBuf
+    vld16_0                 CmvXY,[c8x8,MPO_mv + 0]             // .. .. .. .. .. .. ..  yx0
+    vld16_1                 CmvXY,[c8x8,MPO_mv + 2]             // .. .. .. .. .. .. yx1 yx0
+    vld16_3.leftDbValid     mvXY,[l8x8,MPO_mv + 2]              // yxL  ................
+    vld16_3!leftDbValid     mvXY,[c8x8,MPO_mv + 0]              // yx0  ................
+    vmrgw                   CmvXY, CmvXY, CmvXY         //           xy1 xy1 yx0 yx0
+    vupsbw                  mvXY, mvXY                  // yL xL ...................
+    vupsbw                  CmvXY,CmvXY                 //  y1 x1 y1 x1 y0 x0 y0 x0
+    vmr6w                   mvXY, CmvXY, mvXY           //  y1 x1 y0 x0 y0 x0 yL xL = [y1 x1 y1 x1 y0 x0 y0 x0 , yL xL .........]
+    vdifw                   mvd, CmvXY, mvXY
+    vlew                    mvd, const4, mvd            //  4 < (x & y diffs)
+    vabsw                   mvd, mvd                    // Make pos, so packing pair to 16 bit will always be non zero when needed
+    vasrp                   mvd, mvd, 0                 // or together by packing into 4 values
+    vsnew                   mvd, 0                      // .s == (xy diffs >= 4)
+
+label NotRow0or2
+    vec16                   strength, strongs
+    vec16                   lumaJmp, chromaJmp          // Per lane jump vectors
+    vec16                   dbParams
+    vec16                   idxYs, idxUVs
+ begin
+    p16                     maskNzStr
+    vaddw.f                 strength, filStrength, 0    // str nz?
+    vmovw.15                lumaJmp, .horzSkipLuma
+    vaddw.coefMsk.z.f       strength, VZERO, 2          // z & coefs
+    vaddw.z.s.f             strength, VZERO, 1          // z & mv diff >= 4
+    vltw                   maskNzStr, VZERO, strength  // strength gt zero mask to scalar
+    vmovw.240               lumaJmp, .horizRowDone      // Finished when these get popped
+    vjp!maskNzStr           .horizRowSkip               // Nothing to do all strengths zero
+~   vaddw.f                 idxYs, abIdxsY, VZERO
+~   vmovw.maskNzStr.nz      lumaJmp, .doHorzEdgeLuma    // When strength nz &
+~   vaddw.f                 idxUVs, abIdxsUV, VZERO
+    vsubw                   strength, strength, 1       // for indexing AlphaBetaCoTable[str-1][idxY]
+    vmvw                    strongs, strongFilter
+    vbmulw                  strength, strength, 4*37    // for indexing AlphaBetaCoTable[str-1][idxY]
+    vbmulw                  idxYs, idxYs, 4
+    vbmulw                  idxUVs, idxUVs, 4
+    vjb                     lumaJmp, .horizRowDone      // pop & jump to first luma
+~   vmovw                   chromaJmp, .horzSkipCroma   // Default
+~   vmovw.maskNzStr.nz      chromaJmp, .doHorzChroma    // When strength nz && abIdxsUV[column] != 0
+~   vmovw.0xaa              chromaJmp, .horzSkipCroma   // Nothing to do on odd lanes
+ end
+
+label doHorzEdgeLuma
+    p16                     strong
+    p16                     str
+ begin
+    p16                     idx, unaligned
+    vpopw                   idx, idxYs, 0
+    vpopw                   str, strength, 0            // WorkAreaSDM->AlphaBetaCoTable[str-1][idxY]
+    via                     unaligned, lumaPtr , 7
+    vaddw                   'idx, 'idx, str
+    vjp.unaligned           .doHorzEdgeLumaUnaligned
+~   vld32wle                dbParams, [idx, SDMOF_AlphaBetaCoTable]
+~   vpopw                   strong, strongs ,0
+~   vmivw'1                 dbParams, strong
+ end
+
+// Aligned version
+ begin
+    vec16                   line1, line2, line3, line4
+    vec16                   inter1, inter2, inter3, inter4
+    
+    regmap
+    
+// Deblock 6x4 pixel edge aligned on 8 byte boundry
+    vld64w                  line1, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*0]
+    vld64w                  line2, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*1]
+    vld64w                  line3, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*2]
+    vld64w                  line4, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*3]
+    vh264ft                 inter1, line1, dbParams
+    vh264ft                 inter2, line2, dbParams
+    vh264ft                 inter3, line3, dbParams
+    vh264ft                 inter4, line4, dbParams
+    vh264f                  line1, line1, inter1
+    vh264f                  line2, line2, inter2
+    vh264f                  line3, line3, inter3
+    vh264f                  line4, line4, inter4
+    vst64                   line1, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*0]
+    vjb                     chromaJmp, 0
+~   vst64                   line2, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*1]
+~   vst64                   line3, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*2]
+~   vst64                   line4, [lumaPtr, PCB_RECONSTRUCTED_STRIDE*3]
+ end
+
+label doHorzEdgeLumaUnaligned
+
+ begin
+    vec16                   line1, line2, line3, line4
+    vec16                   inter1, inter2, inter3, inter4
+// Deblock 6x4 pixel edge
+    vld32wl                 line1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*0]
+    vld32wh                 line1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*0+4]
+    vld32wl                 line2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*1]
+    vld32wh                 line2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*1+4]
+    vld32wl                 line3,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*2]
+    vld32wh                 line3,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*2+4]
+    vld32wl                 line4,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*3]
+    vld32wh                 line4,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*3+4]
+    vh264ft                 inter1, line1, dbParams
+    vh264ft                 inter2, line2, dbParams
+    vh264ft                 inter3, line3, dbParams
+    vh264ft                 inter4, line4, dbParams
+    vh264f                  line1, line1, inter1
+    vh264f                  line2, line2, inter2
+    vh264f                  line3, line3, inter3
+    vh264f                  line4, line4, inter4
+    vst32                   line1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*0]
+    vst32                   line2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*1]
+    vst32                   line3,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*2]
+    vst32                   line4,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*3]
+    vst32_2                 line1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*0+4]
+    vjb                     chromaJmp, 0
+~   vst32_2                 line2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*1+4]
+~   vst32_2                 line3,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*2+4]
+~   vst32_2                 line4,[lumaPtr,PCB_RECONSTRUCTED_STRIDE*3+4]
+ end
+
+
+label horzSkipLuma
+ begin
+    p16                     idx
+    vjb                     chromaJmp, 0
+~   vpopw                   str, strength, 0            // WorkAreaSDM->AlphaBetaCoTable[str-1][idxY]
+~   vpopw                   idx, idxYs, 0
+~   vpopw                   strong, strongs ,0
+ end
+
+// Chroma horizontal deblock
+// Deblock 2 pixel high edge for other U & V
+label doHorzChroma
+// Colour layout in MPC reconstructed format
+//24    xxLLuuuuuuuuxxLLvvvvvvvv                L =  pixels for left block
+//25    xxLLuuuuuuuuxxLLvvvvvvvv
+//
+//                 u           u                        v              v
+//  A -> x  x  p1 p0 q0 q1 p1 p0 q0 q1 u  u  x  x  p1 p0 q0 q1  p1 p0 q0 q1 v  v
+//  B -> x  x  p1 p0 q0 q1 p1 p0 q0 q1 u  u  x  x  p1 p0 q0 q1  p1 p0 q0 q1 v  v
+//             -----------                         -----------
+//Offset 0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20 21 22 23
+
+ begin
+    p16                     idx
+    vpopw                   idx, idxUVs, 0
+    vaddw                   'idx, 'idx, str
+
+    vec16                   p1,p0,q0,q1
+ begin
+    p16                     alpha, beta
+                                                    //                  1        0
+    vld16_0                 p1,[chromaPtr, 2]       // p1- ......       x   [Up0A Up1A]
+    vld16_0                 p0,[chromaPtr, 2 + 24]  // p0- ......       x   [Up0B Up1B]
+    vld16_0                 q0,[chromaPtr, 4]       // q0- ......       x   [Uq1A Uq0A]
+    vld16_0                 q1,[chromaPtr, 4 + 24]  // q1- ......       x   [Uq1B Uq0B]
+
+    vim                     idx, idx, SDMOF_AlphaBetaCoTable
+                                                    //                  1        0
+    vld16_1                 p1,[chromaPtr, 14]      // p1- ......[Vp0A Vp1A] Up0A Up1A
+    vld16_1                 p0,[chromaPtr, 14 +24]  // p0- ......[Vp0B Vp1B] Up0B Up1B
+    vld16_1                 q0,[chromaPtr, 16]      // q0- ......[Vq1A Vq0A] Uq1A Uq0A
+    vld16_1                 q1,[chromaPtr, 16 +24]  // q1- ......[Vq1B Vq0B] Uq1B Uq0B
+
+    vld8w                   'alpha,[idx, 3]
+    vld8w                   'beta,[idx, 2]
+                                                    //             3     2     1     0
+    vupbw                   p1, p1                  // p1- ...... Vp0A  Vp1A  Up0A  Up1A
+    vupbw                   p0, p0                  // p0- ...... Vp0B  Vp1B  Up0B  Up1B
+    vupbw                   q0, q0                  // q0- ...... Vq1A  Vq0A  Uq1A  Uq0A
+    vupbw                   q1, q1                  // q1- ...... Vq1B  Vq0B  Uq1B  Uq0B
+
+    vexch1                  p1, p0                  // p1- ......[Vp1B] Vp1A [Up1B] Up1A
+                                                    // q1- ...... Vp0B [Vp0A] Up0B [Up0A]
+
+    vexch1                  q0, q1                  // q0- ......[Vq0B] Vq0A [Uq0B] Uq0A
+                                                    // q1- ...... Vq1B [Vq1A] Uq1B [Uq1A]
+
+//if ( (ABS(q0 - p0) < alpha) && (ABS(p1 - p0) < beta) && (ABS(q1 - q0) < beta) )
+    vec16                   q0p0Dif, p1p0Dif, q1q0Dif
+    vdifw                   q0p0Dif, q0, p0
+    vdifw                   p1p0Dif, p1, p0
+    vdifw                   q1q0Dif, q1, q0
+    vjp.strong              .horzStrongChroma
+~   vsubw.f                 VZERO, q0p0Dif, alpha
+~   vsubw.lt.f              VZERO, p1p0Dif, beta
+~   vsubw.lt.f              VZERO, q1q0Dif, beta
+ end
+
+    vec16               pp, qq
+
+//            int macro_input = (((q0-p0)<<2) + (p1-q1) + 4) >> 3;
+ begin
+    vec16                   delta
+    p16                     c0
+    vec16                   c1,mc1
+
+    regmap
+    
+    vld8w                   'c0,[idx, 0]
+    vsubw                   delta, q0, p0
+    vmulw                   delta, delta, 4
+    vsubaw                  delta, p1, q1
+    vmivw                   c1, c0
+    vasrrw                  delta, delta, 3
+    vaddw                   c1, c1, 1
+    vsubw                   mc1, VZERO, c1
+    vminw                   delta, delta, c1
+    vmaxw                   delta, delta, mc1
+    vaddw                   pp, p0, delta
+    vjp                     .horzStoreChroma
+~   vsubw                   qq, q0, delta
+~   vasrpwb                 pp, pp, 0                       // clip 0 - 255
+~   vasrpwb                 qq, qq, 0
+ end
+
+// Strong
+label horzStrongChroma
+//            P0 = (PIXEL)((p0 + q1 + (p1 << 1) + 2) >> 2);
+//            Q0 = (PIXEL)((q0 + p1 + (q1 << 1) + 2) >> 2);
+    vaddw                   pp, p1, p1      // p1 << 1
+    vaddaw                  pp, p0, q1      // + p0 + q1
+    vaddw                   qq, q1, q1      // q1 << 1
+    vaddaw                  qq, q0, p1      // + q0 + p1
+    vasrrpwb                pp, pp, 2       // + 2) >> 2
+    vasrrpwb                qq, qq, 2       // + 2) >> 2
+
+label horzStoreChroma
+    vupbw.lt                p0, pp
+    vupbw.lt                q0, qq
+                                                    //             3     2     1     0
+    vexch1                  p1, p0                  // p1- ......[Vp0A] Vp1A [Up0A] Up1A
+                                                    // p0- ...... Vp0B [Vp1B] Up0B [Up1B]
+
+    vexch1                  q0, q1                  // q0- ......[Vq1A] Vq0A [Uq1A] Uq0A
+                                                    // q1- ...... Vq1B [Vq0B] Uq1B [Uq0B]
+
+    vst8_1                  p1,[chromaPtr, 3]       // Up0A
+    vst8_0                  q0,[chromaPtr, 4]       // Uq0A
+    vst8_3                  p1,[chromaPtr, 15]      // Vp0A
+    vst8_2                  q0,[chromaPtr, 16]      // Vq0A
+
+    vst8_1                  p0,[chromaPtr, 24 + 3]  // Up0B
+    vjp                     .horzColDone
+~   vst8_0                  q1,[chromaPtr, 24 + 4]  // Uq0B
+~   vst8_3                  p0,[chromaPtr, 24 + 15] // Vp0B
+~   vst8_2                  q1,[chromaPtr, 24 + 16] // Vq0B
+
+ end
+label horzSkipCroma
+ begin
+    p16                     idx
+    vpopw                   idx,idxUVs, 0
+ end
+label horzColDone
+    vjb                     lumaJmp, .horizRowDone
+~   vim                     lumaPtr, lumaPtr, 4
+~   vaddw                   'chromaPtr, 'chromaPtr, 2
+~   vnop
+
+label horizRowSkip
+    vim                     lumaPtr, lumaPtr, 4*4
+    vaddw                   'chromaPtr, 'chromaPtr, 2*4
+
+label horizRowDone
+ begin
+    p16                     notLastRow
+    vim                     notLastRow, row, -3
+    vim                     row, row, 1
+    vjp.notLastRow          .HorRowLoop
+~   vlsrw                   'coefMsk, 'coefMsk, 4
+~   vaddw                   'lumaPtr,'lumaPtr, PCB_RECONSTRUCTED_STRIDE*4-16
+~   vaddw                   'chromaPtr, 'chromaPtr,  PCB_RECONSTRUCTED_STRIDE*2-8
+ end
+
+endfunc
+//----------------------------------------------------------------------------------------------------
+
+// End of scope for horizontal deblock shared vars
+ end
+
+
+//----------------------------------------------------------------------------------------------------
+
+
+
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Assumes current MPC is setup
+// Vertical deblock edges
+// Sends channel reply
+func.f                      VerticalDeblock
+    // Params -----------
+    // End params -------
+    p16                     lumaPtr, chromaPtr
+
+    vim                     lumaPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + 8
+    vim                     chromaPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*4
+    
+    s16                     intAbIdxsY, intAbIdxsUV
+    p16                     lumaCoef
+    s16:lumaCoef            coefNz
+    p16                     strongFilter
+    regmap
+        // Edges depend on this sub block's and the above sub block's nz coefs
+        //unsigned int coefm = dbcb.NonZeroCoeffLuma | (dbcb.NonZeroCoeffLuma << 4);
+    vld16                   'lumaCoef,[CirBuf, MPO_NonZeroCoeffLuma]
+    vxsumw                  abIdxsY, InternalYab, {InternalYab}                 // Broadcast
+    vxsumw                  abIdxsUV, InternalUVab, {InternalUVab}
+    vmulw                   coefNz, 'lumaCoef, 16
+    vmvw.{intAbIdxsY}       intAbIdxsY, abIdxsY
+    vmvw.{intAbIdxsUV}      intAbIdxsUV, abIdxsUV
+    vor                     'lumaCoef, coefNz, 'lumaCoef
+
+//        MV_t *mvAbovePtr = dbcb.mv; // Line of mv above current sub block
+    p16                     mvPtr
+    vec16                   RowJump
+    vim                     mvPtr, CirBuf, MPO_mv
+    vmovw                   filStrength, -1
+//        // Looking up
+//        if(aboveDbValid)
+//        {
+    vjp!aboveDbValid        .NoAbove
+~   vmovw                   'strongFilter, 0    
+~   vmovw.7                 RowJump, .RowTopLoop       // Jump back to top 3 times
+~   vmovw.8                 RowJump, .RowLoopExit
+    
+ begin
+//            int average_luma_quant = (dbcb.QuantValue + dbfb.QuantValue + 1) >> 1;
+    p16                     avgLumaQ
+    s16:avgLumaQ            Quant, abvQuant
+    s16:chromaQp            avChromaQ, avChoTp
+    p16                     tChPtr
+    regmap
+    vld8w                   Quant,[CirBuf, MPO_QuantValue]
+    vld8w                   abvQuant,[FixBuf, MPO_QuantValue]
+    vld8w                   avChromaQ,[FixBuf, MPO_QuantValue]
+    vaddw                   'avgLumaQ, Quant, abvQuant
+    vaddw                   avChromaQ, avChromaQ, ChromaQ_IdxOffset
+    vasrrw                  'avgLumaQ, 'avgLumaQ, 1
+    vmivw                   abIdxsY, avgLumaQ
+//            abIdxY = CLIP_FOR_FILTER(average_luma_quant - 15);
+    move16                  tChPtr, avChromaQ                           
+    vsubw                   abIdxsY, abIdxsY, 15
+    vim                     tChPtr, tChPtr, 16 + SDMOF_h264_quantiser_chroma_mapping_tableClipping
+    vmaxw                   abIdxsY, abIdxsY, 0
+    vld8w                   avChoTp, [tChPtr, 0]
+    vminw                   abIdxsY, abIdxsY, 255
+//
+//            int average_chroma_quant = 
+//                (
+//                    chromaQp +
+//                    WorkAreaSDM->h264_quantiser_chroma_mapping_tableClipping[dbfb.QuantValue + MgrMPC.Deblock.ChromaQ_IdxOffset + 16] + 1
+//                ) >> 1;
+
+    vaddw                   avChoTp, chromaQp, avChoTp
+//            strong_filtering[0] = strong_filtering[1] = strong_filtering[2] = strong_filtering[3] = false;
+    vmovw                   'strongFilter, 0
+    vasrrw                  avChoTp, avChoTp, 1
+//            abIdxUV = CLIP_FOR_FILTER(average_chroma_quant  - 15);
+    vsubw                   avChoTp, avChoTp, 15
+    vmvw                    filStrength, VZERO
+    vmaxw                   avChoTp, avChoTp, 0
+    p16                     intra
+    viv                     intra, 'AboveIntra'BlkIntra             // both should be 0 or 0xffff
+    vminw                   avChoTp, avChoTp, 255
+    s16:lumaCoef            abvCoef
+    vld16                   abvCoef, [FixBuf, MPO_NonZeroCoeffLuma]
+    vxsumw                  abIdxsUV, avChoTp, {avChoTp}                // Broadcast
+//            strength[0] = strength[1] = strength[2] = strength[3] = 0;  
+
+//            if (block_coded_intra || aboveMB_block_coded_intra)
+//            {
+//                strength[0] = strength[1] = strength[2] = strength[3] = 3;  
+    vmovw.intra             filStrength, 3
+//                strong_filtering[0] = strong_filtering[1] = strong_filtering[2] = strong_filtering[3] = true; // Implies strong filtering is possible but not guaranteed
+    move16                  'strongFilter, 'intra
+//            }
+//            coefm |= (dbfb.NonZeroCoeffLuma >> 12);
+    vlsrw                   abvCoef, abvCoef, 12
+    vor                     'lumaCoef, 'lumaCoef, abvCoef
+//            mvAbovePtr = dbfb.mv + 2;
+    vim                     mvPtr, FixBuf, MPO_mv + 4
+//        } // above exists
+ end
+
+ label NoAbove
+ 
+ 
+    vec16                   mvTop, mvMid, mvBot
+    p16                     evenRow
+    vmovw                   'evenRow, 0xffff
+    vld32                   mvTop, [mvPtr, 0]           // Could be top line mv this block or bot line mv of above
+    vld32                   mvMid, [CirBuf, MPO_mv]     // Top line mv this block
+ begin
+    vld32                   mvBot, [CirBuf, MPO_mv + 4] // Bottom line mv this block
+ begin
+    vec16                   const4
+    vmovw                   const4, 4
+    vupsbw                  mvTop, mvTop
+    vupsbw                  mvMid, mvMid
+    vupsbw                  mvBot, mvBot
+    vdifw                   mvTop, mvTop, mvMid
+    vdifw                   mvMid, mvMid, mvBot
+    vlew                    mvTop, const4, mvTop
+    vlew                    mvMid, const4, mvMid
+ end
+ end
+    vmulw                   abIdxsY, abIdxsY, 4
+    vmulw                   intAbIdxsY, intAbIdxsY, 4
+    vmulw                   abIdxsUV, abIdxsUV, 4
+    vmulw                   intAbIdxsUV, intAbIdxsUV, 4
+ 
+ 
+
+ label RowTopLoop
+    // Calc strength
+    vaddw.f                 VZERO, filStrength, VZERO
+    vsne                    mvTop, 0             // use x & y as low high of 32 bit
+    vmovw.lumaCoef.z.f      filStrength, 2
+    vmovw.evenRow.s.z.f     filStrength, 1
+//  vtall.15.z // early out from here
+    vmaxw                   filStrength, filStrength, 0
+    vec16                   alpha, beta, c0
+ begin
+//    int alpha =             WorkAreaSDM->AlphaBetaCoTable[strength-1][index_ab][ABC0_ALPHA];
+//    UNSIGNED_SEPTET beta =  WorkAreaSDM->AlphaBetaCoTable[strength-1][index_ab][ABC0_BETA];
+//    int c0 =                WorkAreaSDM->AlphaBetaCoTable[strength-1][index_ab][ABC0_C0];
+    p16                     idxY, str, idxUV
+ begin
+    vec16                   idxs
+//    vec16                   
+    regmap
+    vsubw.f                 idxs, filStrength, 1
+    vmulw                   idxs, idxs, 4*37
+    vaddw                   abIdxsY, idxs, abIdxsY
+    vaddw                   abIdxsY, abIdxsY, SDMOF_AlphaBetaCoTable  // index into alpha, beta & co table
+    vaddw.ge                abIdxsUV, idxs, abIdxsUV
+    vaddw.ge                abIdxsUV, abIdxsUV, SDMOF_AlphaBetaCoTable  // index into alpha, beta & co table
+    vmvw.lt                 abIdxsUV, VZERO
+ end
+ 
+ // Do chroma first
+ 
+  // vertical chroma
+ begin
+    vec16                   p1U, p0U, q0U, q1U
+    vec16                   p1V, p0V, q0V, q1V
+    vec16                   macInpU,macInpV, dp1p0, dq1q0, c, mc
+    regmap
+    vjp!evenRow             .ChromaDone   
+~   vmvw                    alpha, VZERO
+~   vmvw                    beta, VZERO
+~   vmvw                    c0, VZERO
+    vswap                   vr00, abIdxsUV                    // Swap indxs into i0,i1,i2 & i3
+    vld8w.i0                alpha, [i0,  ABC0_ALPHA]
+    vld8w.i0                beta, [i0,  ABC0_BETA]
+    vld8w.i0                c0, [i0,  ABC0_C0]
+    vxsumw.0x03             alpha, alpha, 1                   // broadcast across lanes
+    vxsumw.0x03             beta, beta, 1
+    vxsumw.0x03             c0, c0, 1
+    vld8w_2.i1              alpha, [i1,  ABC0_ALPHA]
+    vld8w_2.i1              beta, [i1,  ABC0_BETA]
+    vld8w_2.i1              c0, [i1,  ABC0_C0]
+    vxsumw.0x0c             alpha, alpha, 4                   // broadcast across lanes
+    vxsumw.0x0c             beta, beta, 4
+    vxsumw.0x0c             c0, c0, 4
+    vld8w_4.i2              alpha, [i2,  ABC0_ALPHA]
+    vld8w_4.i2              beta, [i2,  ABC0_BETA]
+    vld8w_4.i2              c0, [i2,  ABC0_C0]
+    vxsumw.0x30             alpha, alpha, 16                   // broadcast across lanes
+    vxsumw.0x30             beta, beta, 16
+    vxsumw.0x30             c0, c0, 16
+    vld8w_6.i3              alpha, [i3,  ABC0_ALPHA]
+    vld8w_6.i3              beta, [i3,  ABC0_BETA]
+    vld8w_6.i3              c0, [i3,  ABC0_C0]
+    vxsumw.0xc0             alpha, alpha, 64                   // broadcast across lanes
+    vxsumw.0xc0             beta, beta, 64
+    vxsumw.0xc0             c0, c0, 64
+    vswap                   vr00, abIdxsUV                    // restore vr00
+
+// Load chroma U & V 
+//          int c = params[0] + 1;
+    vaddw                   c, c0, 1
+    vld32wl                 p1U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-2+4]
+    vld32wh                 p1U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-2+8]
+    vld32wl                 p0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-1+4]
+    vld32wh                 p0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-1+8]
+    
+    vld32wl                 q0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*0+4]
+    vld32wh                 q0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*0+8]
+    
+    vld32wl                 q1U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*1+4]
+    vld32wh                 q1U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*1+8]
+    
+    vld64w                  p1V,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-2+16]
+    vld64w                  p0V,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-1+16]
+    vjp.strongFilter        .ChromaStrong
+~   vld64w                  q0V,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*0+16]
+~   vld64w                  q1V,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*1+16]
+~   vsubw                   mc, VZERO, c
+// Chroma U
+// Normal filter
+//  if ( (ABS(q0 - p0) < alpha) && (ABS(p1 - p0) < beta) && (ABS(q1 - q0) < beta) )
+    vdifw                   macInpU, p0U, q0U
+    vdifw                   dp1p0, p1U, p0U
+    vdifw                   dq1q0, q1U, q0U
+    vsltw                   macInpU, alpha
+    vsltw.s                 dp1p0, beta
+    vsltw.s                 dq1q0, beta
+//          int macro_input = (((q0-p0)<<2) + (p1-q1) + 4) >> 3;
+    vsubw                   macInpU, q0U, p0U
+    vmulw                   macInpU, macInpU, 4
+    vsubaw                  macInpU, p1U, q1U
+// Chroma V
+// Normal filter
+//  if ( (ABS(q0 - p0) < alpha) && (ABS(p1 - p0) < beta) && (ABS(q1 - q0) < beta) )
+    vdifw                   macInpV, p0V, q0V
+    vdifw                   dp1p0, p1V, p0V
+    vdifw                   dq1q0, q1V, q0V
+    vasrrw                  macInpU, macInpU, 3
+//          int delta = CLIP(-c, c, macro_input);
+    vmaxw                   macInpU, macInpU, mc
+    vminw                   macInpU, macInpU, c
+//          P0 = RECON_CLIP(p0 + delta);
+    vaddw.s                 p0U, p0U, macInpU
+//          Q0 = RECON_CLIP(q0 - delta);
+    vsubw.s                 q0U, q0U, macInpU
+
+    vsltw                   macInpV, alpha
+    vsltw.s                 dp1p0, beta
+    vsltw.s                 dq1q0, beta
+//          int macro_input = (((q0-p0)<<2) + (p1-q1) + 4) >> 3;
+    vsubw                   macInpV, q0V, p0V
+    vmulw                   macInpV, macInpV, 4
+    vsubaw                  macInpV, p1V, q1V
+    vasrrw                  macInpV, macInpV, 3
+//          int delta = CLIP(-c, c, macro_input);
+    vmaxw                   macInpV, macInpV, mc
+    vjp                     .ChromaWriteBack
+~   vminw                   macInpV, macInpV, c
+//          P0 = RECON_CLIP(p0 + delta);
+~   vaddw.s                 p0V, p0V, macInpV
+//          Q0 = RECON_CLIP(q0 - delta);
+~   vsubw.s                 q0V, q0V, macInpV
+
+
+label ChromaStrong
+// Strong filter U
+    vdifw                   macInpU, p0U, q0U
+    vdifw                   dp1p0, p1U, p0U
+    vdifw                   dq1q0, q1U, q0U
+    vsltw                   macInpU, alpha
+    vsltw.s                 dp1p0, beta
+    vsltw.s                 dq1q0, beta
+//            P0 = (PIXEL)((p0 + q1 + (p1 << 1) + 2) >> 2);
+    vaddw.s                 p0U, p0U, p1U
+    vaddaw.s                p0U, q1U, p1U
+// Strong filter V
+    vdifw                   macInpV, p0V, q0V
+    vdifw                   dp1p0, p1V, p0V
+    vdifw                   dq1q0, q1V, q0V
+    vasrrw.s                p0U, p0U, 2
+//            Q0 = (PIXEL)((q0 + p1 + (q1 << 1) + 2) >> 2);
+    vaddw.s                 q0U, q0U, q1U
+    vaddaw.s                q0U, p1U, q1U
+    vsubw.f                 VZERO, macInpV, alpha
+    vsubw.n.f               VZERO, dp1p0, beta
+    vsubw.n.f               VZERO, dq1q0, beta
+    vasrrw.s                q0U, q0U, 2
+
+//            P0 = (PIXEL)((p0 + q1 + (p1 << 1) + 2) >> 2);
+    vaddw.n                 p0V, p0V, p1V
+    vaddaw.n                p0V, q1V, p1V
+//            Q0 = (PIXEL)((q0 + p1 + (q1 << 1) + 2) >> 2);
+    vaddw.n                 q0V, q0V, q1V
+    vaddaw.n                q0V, p1V, q1V
+    vasrrw.n                p0V, p0V, 2
+    vasrrw.n                q0V, q0V, 2
+
+
+label ChromaWriteBack
+    vasrpwb                 p0U, p0U, 0
+    vasrpwb                 q0U, q0U, 0
+    vasrpwb                 p0V, p0V, 0
+    vasrpwb                 q0V, q0V, 0
+    vst32                   p0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-1+4]
+    vst32_2                 p0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-1+8]    
+    vst32                   q0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*0+4]
+    vst32_2                 q0U,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*0+8]
+    vst64                   p0V,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*-1+16]
+    vst64                   q0V,[chromaPtr, PCB_RECONSTRUCTED_STRIDE*0+16]
+
+label ChromaDone
+ end
+ 
+ 
+ // Now Luma
+ 
+// do vertical filter on whole MB width. So 16 pixels wide in 4x4 lanes, 2 across registers
+    vmvw.0xf0               abIdxsY, VZERO // setup loop until zero popped
+    vpopw                   str, filStrength, 0
+    vpopw                   idxY, abIdxsY, 0
+    vpopw                   idxUV, abIdxsUV, 0
+label ParamLp
+    vjp!str                 .VEdgeDone                        // strength zero so zkip
+
+~   vld8w.str               alpha, [idxY,  ABC0_ALPHA]
+~   vld8w.str               beta, [idxY,  ABC0_BETA]
+~   vld8w.str               c0, [idxY,  ABC0_C0]
+    vxsumw.0x0f             alpha, alpha, 1                   // broadcast across lanes
+    vxsumw.0x0f             beta, beta, 1
+    vxsumw.0x0f             c0, c0, 1
+
+    vec16                   p3,p2,p1,p0,q0,q1,q2,q3
+    vec16                   macInp
+ begin
+    vec16                   dp1p0, dq1q0
+    regmap
+    vld32wl                 p3,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -4]
+    vld32wl                 p2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -3]
+    vld32wl                 p1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -2]
+    vld32wl                 p0,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -1]
+    vld32wl                 q0,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 0]
+    vld32wl                 q1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 1]
+    vld32wl                 q2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 2]
+    vld32wl                 q3,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 3]
+
+    vdifw                   macInp, q0, p0              //ABS(q0 - p0)
+//if ( (macInp < alpha) && (ABS(p1 - p0) < beta) && (ABS(q1 - q0) < beta) )
+    vdifw                   dp1p0, p1, p0
+    vdifw                   dq1q0, q1, q0
+    vjp.strongFilter        .DoStrong
+~   vsltw                   macInp, alpha
+~   vsltw.s                 dp1p0, beta
+~   vsltw.s                 dq1q0, beta
+ end
+ // Normal vertical luma ------------------
+ 
+ begin
+    vec16                   apLtBeta, aqLtBeta
+    regmap 
+//                apLtBeta = ABS(p2 - p0) < beta
+//                aqLtBeta = ABS(q2 - q0) < beta
+    vdifw                   apLtBeta, p2, p0
+    vdifw                   aqLtBeta, q2, q0
+    vltw                    apLtBeta, apLtBeta, beta
+    vltw                    aqLtBeta, aqLtBeta, beta
+ begin
+    vec16                   p0q0Rs1, delta
+    vec16                   c, mc
+    vec16                   mc0
+    regmap 
+ //                macInp = (((q0-p0)<<2) + (p1-q1) + 4) >> 3;
+//                c = c0 + apLtBeta + aqLtBeta;
+    vsubw                   c, c0, apLtBeta                 // do sub because -1 is true
+    vsubw                   macInp, q0, p0
+    vsubaw                  macInp, q0, p0
+    vsubaw                  macInp, q0, p0
+    vsubaw                  macInp, q0, p0
+    vsubaw                  macInp, p1, q1
+    vsubw                   c, c, aqLtBeta
+//                p0q0Rs1 = (p0 + q0 + 1) >> 1;
+    vaddw                   p0q0Rs1, p0, q0
+    vsubw                   mc, VZERO, c
+    vasrrw                  macInp, macInp, 3
+
+    vasrrw                  p0q0Rs1, p0q0Rs1, 1
+//                delta = CLIP(-c, c, macInp);
+    vmaxw                   delta, mc, macInp
+    vminw                   delta, delta, c
+    
+//                P0 = RECON_CLIP(p0 + delta);
+    vaddw.s                 p0, p0, delta
+//                Q0 = RECON_CLIP(q0 - delta);
+//                    macInp = (p2 + p0q0Rs1 - (p1 << 1)) >> 1;
+    vsubw                   macInp, p2, p1
+    vsubaw                  macInp, p0q0Rs1, p1
+    vsubw.s                 q0, q0, delta
+//                if (apLtBeta)
+    vaddw.f                 VZERO, apLtBeta, VZERO
+//                {
+    vasrw                   macInp, macInp, 1
+    vsubw                   mc0, VZERO, c0
+//                    P1 = (PIXEL)(p1 + CLIP(-c0, c0, macInp));
+    vminw                   macInp, macInp, c0 
+    vmaxw                   macInp, macInp, mc0
+    vaddw.s.nz              p1, p1, macInp
+//                }
+//                if (aqLtBeta)
+//                {
+//                    macInp = (q2 + p0q0Rs1 - (q1 << 1)) >> 1;
+    vsubw                   macInp, q2, q1
+    vsubaw                  macInp, p0q0Rs1, q1
+    vaddw.f                 VZERO, aqLtBeta, VZERO
+    vasrw                   macInp, macInp, 1
+//                    Q1 = (PIXEL)(q1 + CLIP(-c0, c0, macInp));
+    vjp                     .WriteBackLuma
+~   vmaxw                   macInp, macInp, mc0
+~   vminw                   macInp, macInp, c0 
+~   vaddw.s.nz              q1, q1, macInp
+
+ end
+//                }
+ end    
+
+label DoStrong  // Strong verticcal luma --------
+ begin
+    p16                     apLtBeta, aqLtBeta
+ begin
+    vec16                   pTmp, qTmp, smallGap
+//                // Strong filtering for some intra macroblock boundaries
+//                bool small_gap = (macro_input < ((alpha >> 2) + 2));
+    vasrw                   smallGap, alpha, 2
+    vmovw                   pTmp, BigButSafe       
+    vaddw                   smallGap, smallGap, 2
+    vmovw                   qTmp, BigButSafe
+    vsubw.f                 VZERO, macInp, smallGap         
+//                bool apLtBeta = (ABS(p2 - p0) < beta) && small_gap
+    vdifw.s.n               pTmp, p2, p0                // Otherwise BigButSafe
+    viltw                   apLtBeta, pTmp, beta
+//                bool aqLtBeta = (ABS(q2 - q0) < beta) && small_gap
+    vdifw.s.n               qTmp, q2, q0
+    viltw                   aqLtBeta, qTmp, beta
+ end
+ 
+    vec16                   op1, op0, oq0, oq1, tmp, tmq
+    regmap
+//                // Copy some original pels first
+//                int op1 = p1;
+//                int op0 = p0;
+//                int oq0 = q0;
+//                int oq1 = q1;
+    vmvw                    op1, p1
+    vmvw                    op0, p0
+    vmvw                    oq0, q0
+    vmvw                    oq1, q1
+ 
+//                if (ap_less_than_beta)
+//                {
+//                    P0 = (PIXEL)((p2 + oq1 + ((op1 + op0 + oq0) << 1) + 4) >> 3);
+    vaddw.apLtBeta.s        p0, p2, oq1
+    vaddaw.apLtBeta.s       p0, op1, op0
+    vaddaw.apLtBeta.s       p0, oq0, op1
+    vaddaw.apLtBeta.s       p0, op0, oq0
+//                    P1 = (PIXEL)((p2 + op1 + op0 + oq0 + 2) >> 2);
+    vaddw.apLtBeta.s        p1, p2, op1
+    vaddaw.apLtBeta.s       p1, op0, oq0
+//                    P2 = (PIXEL)((p2 + op1 + op0 + oq0 + ((p3 + p2) << 1) + 4) >> 3);
+    vaddw.apLtBeta.s        tmp, p2, op1
+    vaddaw.apLtBeta.s       tmp, op0, oq0
+    vaddaw.apLtBeta.s       tmp, p3, p3
+    vaddaw.apLtBeta.s       tmp, p2, p2
+
+    vasrrw.apLtBeta.s       p0, p0, 3
+    vasrrw.apLtBeta.s       p1, p1, 2
+    vasrrw.apLtBeta.s       p2, tmp, 3
+    
+//                }
+//                else
+//                {
+//                    P0 = (PIXEL)((op0 + oq1 + (op1 << 1) + 2) >> 2);
+
+//                }
+//                if (aq_less_than_beta)
+//                {
+//                    Q0 = (PIXEL)((op1 + q2 + ((op0 + oq0 + oq1) << 1) + 4) >> 3);
+    vaddw.aqLtBeta.s        q0, op1, q2
+    vaddaw.aqLtBeta.s       q0, op0,op0
+    vaddaw.aqLtBeta.s       q0, oq0, oq0
+    vaddaw.aqLtBeta.s       q0, oq1, oq1
+//                    Q1 = (PIXEL)((op0 + oq0 + oq1 + q2 + 2) >> 2);
+    vaddw.aqLtBeta.s        q1, op0, oq0
+    vaddaw.aqLtBeta.s       q1, oq1, q2
+//                    Q2 = (PIXEL)((q2 + oq1 + oq0 + op0 + ((q3 + q2) << 1) + 4) >> 3);
+    vaddw.aqLtBeta.s        tmq, q2, oq1
+    vaddaw.aqLtBeta.s       tmq, oq0, op0
+    vaddaw.aqLtBeta.s       tmq, q3, q3
+    vaddaw.aqLtBeta.s       tmq, q2, q2
+    
+    vasrrw.aqLtBeta.s       q0, q0, 3
+    vasrrw.aqLtBeta.s       q1, q1, 2
+    vasrrw.aqLtBeta.s       q2, tmq, 3
+//                }
+//                else
+//                {
+//                    Q0 = (PIXEL)((oq0 + op1 + (oq1 << 1) + 2) >> 2);
+    vaddw!aqLtBeta.s        q0, oq0, op1
+    vaddaw!aqLtBeta.s       q0, oq1, oq1
+    vaddw!apLtBeta.s        p0, op0, oq1
+    vaddaw!apLtBeta.s       p0, op1, op1
+    
+    vasrrw!aqLtBeta.s       q0, q0, 2
+    vasrrw!apLtBeta.s       p0, p0, 2
+//                }
+    vasrpwb                 p2, p2, 0
+    vasrpwb                 q2, q2, 0
+        
+    vst32                   p2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -3]
+    vst32                   q2,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 2]
+
+ end
+label WriteBackLuma
+    vasrpwb                 p1, p1, 0
+    vasrpwb                 p0, p0, 0
+    vasrpwb                 q0, q0, 0
+    vasrpwb                 q1, q1, 0
+    vst32                   p1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -2]
+    vst32                   p0,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * -1]
+    vst32                   q0,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 0]
+    vst32                   q1,[lumaPtr,PCB_RECONSTRUCTED_STRIDE * 1]
+
+ 
+label VEdgeDone
+    vpopw                   idxY, abIdxsY, 0
+    vpopw                   idxUV, abIdxsUV, 0
+    vjp.idxY                .ParamLp
+~   vpopw                   str, filStrength, 0
+~   vim                     lumaPtr, lumaPtr, 4
+~   vim                     chromaPtr, chromaPtr, 2
+    
+ end
+    
+// label RowLoopEnd
+ begin
+    p16                     intra
+    regmap
+    viv                     intra, 'BlkIntra             //  should be 0 or 0xffff
+    vlsrw                   'lumaCoef, 'lumaCoef, 4
+    vmvw                    'strongFilter, VZERO
+    vmvw                    filStrength, VZERO
+    vxsumw                  abIdxsY, intAbIdxsY, {intAbIdxsY}
+    vxsumw                  abIdxsUV, intAbIdxsUV, {intAbIdxsUV}
+    vmovw.intra             filStrength, 3
+    veqw                    'evenRow, 'evenRow , VZERO          // 0 / 0xffff
+    vjb                     RowJump, 0
+~   vim                     lumaPtr, lumaPtr, PCB_RECONSTRUCTED_STRIDE*4-16
+~   vim                     chromaPtr, chromaPtr, PCB_RECONSTRUCTED_STRIDE*2 - 8
+~   vmvw.evenRow            mvTop, mvMid
+ end
+ 
+ label RowLoopExit
+ 
+endfunc
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////// WRITE DEBLOCKED/UnDeblock FUNCTIONS /////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// GLOBAL Variables for DMA out
+
+begin
+	//p32                     RowColumn=k0    	// Row Col parameter
+    //p32                     HSzVsz=k8     		// Horizontal/Vertical frame size
+    vec32                     RowColumn=vr02    	// Row Col parameter
+    vec32                     HSzVsz=vr03     		// Horizontal/Vertical frame size
+    vec32					  YSdmaddr = vr04
+    vec32					  USdmaddr = vr05
+    vec32					  VSdmaddr = vr06
+    vec32					  YfrmIdx  = vr07
+    vec32					  UfrmIdx  = vr08
+    vec32					  VfrmIdx  = vr09		
+    p32                       sdmAddr = k0
+    // End params -------
+	p32						BLK_REG=k14
+	
+	p16						loc_x=i0
+	p16						loc_y=i1
+	p32						SdmStride =k8
+	vec32					RetAddr
+
+func.s				DmaOutPixelData
+
+begin
+    p32 					DmaReg = k8
+    
+
+ 	vdmaoset            dr1, SdmStride
+
+    // dr0: sdm address
+    vdmaoset            dr0, sdmAddr
+
+    // dr2: block info
+    // Place block size information and frame table index 
+    // in r0 for chroma U and in r1 for chroma V
+    //   [7:0] = horizontal block size
+    //  [15:8] = vertical block size
+    // [20:16] = FRAME_TABLE ADDR
+    vdmaoset            dr2, BLK_REG
+
+    // dr3: location (setup by vdmairun)
+
+    // dr4: system memory address (contained in frame table)
+
+    // dr5: system memory stride (contained in frame table)
+
+    // dr6: config
+    //    [2] =  '0' = disable double linestride
+    vmov                'DmaReg, 0x0
+    vdmaoset            dr6, DmaReg
+
+    // dr7: frame table base address
+    vmov                'DmaReg, SDMOF_FrameTabDMA
+    vjb                 RetAddr, 0
+~   vdmaoset            dr7, DmaReg
+
+    // Set loc_x,loc_y
+~   vmvw.3			    'sdmAddr, RowColumn
+~   vdmaorun            loc_x, loc_y
+    
+    
+end
+
+endfunc
+ 	
+
+// Is Macro
+// Does the DMA out for deblocked block of pixels
+// Sends channel reply
+func                        WriteDeblockedBlock
+    // Params -----------
+ 	// parameters  of WriteDeblockedBlock function
+    
+    // End params -------
+    
+begin    
+
+	vec32						RowsColumns
+	vec32						AddrOffset
+	vec32						AddrStrideOffset
+	vec32						UVAddrStrideOffset
+	vec32						Shiftval
+	vec32						BlkXInc
+	vec32						BlkYInc
+
+    // SET the BLK_REG DMA register
+    // Default block_x and block_y is 12
+    // FRAME_TABLE_Y_CURR_ADDR is 0
+    //+ PCB_RECONSTRUCTED_Y + 8
+    vmvw.0x80			     'BLK_REG,YfrmIdx
+    vmovw					 Shiftval, 4			// For divide by 16
+    vmovw.64				'BLK_REG, 0x0c0c   
+ 	vasrvw				     HSzVsz, HSzVsz, Shiftval
+ 	vsubw					 HSzVsz, HSzVsz, 1
+ 	vsnew					 HSzVsz, RowColumn
+ 	vmovw.64				 BlkXInc, 0x4
+ 	vmovw.64				 BlkYInc, 0x0400
+ 	vaddw!s.64				 'BLK_REG, 'BLK_REG, BlkXInc 
+ 	vsr8.240                VFLAGS, VFLAGS, 2
+ 	vaddw!s.64				'BLK_REG, 'BLK_REG, BlkYInc 
+ 	
+ 	
+ 	
+ 	// Set the SDM stride
+ 	vmov				'SdmStride, PCB_RECONSTRUCTED_STRIDE
+ 	
+ 	
+	// Set the SDM start address 	
+ 	// sdmAddr passed will
+ 	//vmvw				'sdmAddr, YSdmaddr
+ 	vmov				AddrOffset, 4
+ 	vup 				RowsColumns, RowColumn
+ 	vadd.f				RowsColumns, RowsColumns, VZERO
+ 	vsub.nz.3			'YSdmaddr, 'YSdmaddr, AddrOffset
+ 	
+ 	// UV SDM ADDRESS 	
+ 	vmul.3			    UVAddrStrideOffset, 'SdmStride, 2
+ 	vadd    		   'USdmaddr, 'USdmaddr, UVAddrStrideOffset
+ 	vadd    		   'VSdmaddr, 'VSdmaddr, UVAddrStrideOffset
+ 	vmov				AddrOffset, 2
+ 	vsub.nz.3			'USdmaddr, 'USdmaddr, AddrOffset
+ 	vsub.nz.3			'VSdmaddr, 'VSdmaddr, AddrOffset
+ 	
+ 	vsr8.15             VFLAGS, VFLAGS, 4
+ 	vmul.z.3			AddrStrideOffset, 'SdmStride, 4					// (y+4)*PCB_RECONSTRUCTED_STRIDE
+ 	vadd.z    		   'YSdmaddr, 'YSdmaddr, AddrStrideOffset			// (y+4)*PCB_RECONSTRUCTED_STRIDE
+ 	
+ 	
+ 	// UV
+ 	vadd.z    		   'USdmaddr, 'USdmaddr, UVAddrStrideOffset
+ 	vadd.z    		   'VSdmaddr, 'VSdmaddr, UVAddrStrideOffset
+ 	
+ 	vmvw				'sdmAddr, YSdmaddr
+ 	
+ 	
+ 	
+ 	
+ 		
+ 	// Set the LOC_REG CHECK
+ 	// loc_x, loc_y
+ 	vaddw.f				  'RowColumn, 'RowColumn, 0		
+ 	vmulw.3				  'RowColumn, 'RowColumn, 16
+ 	vsubw.nz.3			  'RowColumn, 'RowColumn, 4
+ 		
+ 	
+ 	// Adjust the block size as well
+ 		
+    vjl                   RetAddr, .DmaOutPixelData
+~   vaddw.nz.64				'BLK_REG, 'BLK_REG, BlkXInc 
+~	vsr8.240                VFLAGS, VFLAGS, 2
+~	vaddw.nz.64				'BLK_REG, 'BLK_REG, BlkYInc 
+    
+    
+    // U DMA OUT ================================================================================================================
+  
+   
+ 	vasrw.0x40				 'BLK_REG, 'BLK_REG, 1 
+    vmvw.0x80			     'BLK_REG,UfrmIdx	
+ 	
+ 	
+ 	// Set the SDM stride
+ 	vmov				'SdmStride, PCB_RECONSTRUCTED_STRIDE
+ 	
+ 	
+ 		// Set the LOC_REG CHECK
+ 	// loc_x, loc_y
+ 	
+ 	vsr8.3                 RowColumn, RowColumn, 4		
+ 	vmulw.3				  'RowColumn, 'RowColumn, 8
+    vjl                   RetAddr, .DmaOutPixelData
+~	vaddw.f				  'RowColumn, 'RowColumn, 0			
+~	vsubw.nz.3			  'RowColumn, 'RowColumn, 2	// Y component has substarcted an offset of 4 / UV does only 2
+	
+	// Set the SDM start address 	
+ 	// sdmAddr passed will
+~	vmvw				'sdmAddr, USdmaddr
+  
+   
+     // V DMA OUT ================================================================================================================
+     
+  	//vasrw.0x40				 'BLK_REG, 'BLK_REG, 1 
+    vjl                   RetAddr, .DmaOutPixelData
+~   vmvw.0x80			     'BLK_REG,VfrmIdx	
+ 	
+ 	
+ 	// Set the SDM stride
+~	vmov				'SdmStride, PCB_RECONSTRUCTED_STRIDE
+ 	
+ 	
+ 		// Set the LOC_REG CHECK
+ 	// loc_x, loc_y
+ 	
+ 	//vsr8.3                 RowColumn, RowColumn, 4		
+ 	//vmulw.3				  'RowColumn, 'RowColumn, 8
+ 	//vaddw.f				  'RowColumn, 'RowColumn, 0			
+ 	//vsubw.nz.3			  'RowColumn, 'RowColumn, 2	// Y component has substarcted an offset of 4 / UV does only 2
+	
+	// Set the SDM start address 	
+ 	// sdmAddr passed will
+~	vmvw				'sdmAddr, VSdmaddr
+
+ 
+end
+ 
+
+endfunc
+
+end		// End of global variable scope
+
+
+
+func		WriteOutputBlock
+
+	// Params -----------
+	p32                     RowColumn=k0
+	p32						BLK_REG=k14
+	vec32					YSdmAddr=vr02
+	vec32					USdmAddr=vr03
+	vec32					VSdmAddr=vr04
+	vec32					YfrmIdx  = vr05
+    vec32					UfrmIdx  = vr06
+    vec32					VfrmIdx  = vr07	
+ 	p32                     sdmAddr=k6
+ 	
+   // parameters  of MACRO_WriteOutputBlock function
+
+begin	
+	p16						loc_x=i0
+	p16						loc_y=i1
+	
+	
+	// Config
+@   mov                 r0, 0
+	vdmaoset                dr6, r0
+	
+	// Frame table base address
+@   mov                 r0, SDMOF_FrameTabDMA
+	vdmaoset                dr7, r0
+	
+@   mov                 r0, PCB_RECONSTRUCTED_STRIDE
+	vdmaoset                dr1, r0
+	
+	// Y output
+	
+	// BLOCK_REG
+	vmovw.0x40				'BLK_REG, 0x1010
+	vmvw.0x80				'BLK_REG, YfrmIdx
+	vdmaoset            	dr2, BLK_REG
+	
+	// SDM start address	
+	vmvw					'sdmAddr, YSdmAddr
+	vdmaoset                dr0, sdmAddr
+	
+	// LOC_X LOC_Y
+	vmulw				   'RowColumn, 'RowColumn, 16
+	vdmaorun            	loc_x, loc_y
+	
+	
+	// U output
+	// BLOCK_REG
+	vasrw.0x40				'BLK_REG, 'BLK_REG, 1
+	vmvw.0x80				'BLK_REG, 'UfrmIdx
+	vdmaoset            	 dr2, BLK_REG
+	
+	// SDM start address	
+	vmvw					'sdmAddr, USdmAddr
+	vdmaoset                dr0, sdmAddr
+	
+	// LOC_X LOC_Y
+	vasrw				   'RowColumn, 'RowColumn, 1
+	vdmaorun            	loc_x, loc_y
+	
+	
+	// V output
+	
+	// SDM start address	
+	vmvw					'sdmAddr, VSdmAddr
+	vdmaoset                dr0, sdmAddr
+	
+	vmvw.0x80				'BLK_REG, 'VfrmIdx
+	vdmaoset            	 dr2, BLK_REG
+	
+	// LOC_X LOC_Y
+	vdmaorun            	loc_x, loc_y
+	
+
+end
+
+endfunc
+
+
+
+func        CallBackReleaseBuffer
+    // Params -----------
+    p16                 BufIdx
+    // End params -------
+    pubreg              BufIdx
+
+    // Send channel cmd
+@   mov                 r0, MacroSetting_ChannelNum_MP01ToArc
+@   ld                  r0,[r0,0]
+    vsend               r0, BufIdx, 0
+@   mov                 r1, Service_ReleaseBuffer   // Arc routine to call when complete
+    vsendr              r0, r1, 63
+
+
+endfunc
+
+
+
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Over-writes fixed buffer flags from circular buffer.
+// This makes them invalid when read from macro block to right!!!!
+// Moves deblocked version of pixel data up to fixed buffer
+// Sends channel reply
+func.f                  CopyToFixedAfterDeblockH264
+    // Params -----------
+    p16                 cIdx            // Circular buffer index
+    p16                 Column          // MacroBlock column
+    // End params -------
+// Setup pointers
+    p16                 Current         // Current circular buffer
+    p16                 Above           // Above fixed buffer
+    vmulw               'cIdx, 'cIdx, MPO_SIZE_OF_CIRCULAR_BUF_ENTRY
+    vmulw               'Column, 'Column, MPO_SIZE_OF_FIXED_ENTRY
+//	vdmawait			0x7f,0												------ Not needed unless number of circular buffers is reduced to 6 or less
+    vim                 Current, cIdx, SDMOF_CircularBuffs
+    vim                 Above, Column, SDMOF_FixedBuffs
+
+ begin
+    vec16               NeighbourFlagsEtc, MotionVecs
+    vec16               HorPix0L, HorPix1L, HorPix2L, HorPix3L, HorPix0H, HorPix1H, HorPix2H, HorPix3H
+
+    vld128              NeighbourFlagsEtc,[Current,MPO_LeftMB]  // Flags etc
+    vld128              MotionVecs,[Current,MPO_mv]             // Notion vectors
+
+    // Horizontal pixel overlap buffer
+    vld64               HorPix0L,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-4) + 8 + 0]
+    vld64               HorPix0H,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-4) + 8 + 8]
+    vld64               HorPix1L,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-3) + 8 + 0]
+    vld64               HorPix1H,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-3) + 8 + 8]
+    vld64               HorPix2L,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-2) + 8 + 0]
+    vld64               HorPix2H,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-2) + 8 + 8]
+    vld64               HorPix3L,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-1) + 8 + 0]
+    vld64               HorPix3H,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-1) + 8 + 8]
+
+    // Store all out to above versions in fixed buffer
+    vst128              NeighbourFlagsEtc,[Above,MPO_LeftMB]
+    vst128              MotionVecs,[Above,MPO_mv]
+    vst64               HorPix0L,[Above, MPO_Y_HorizPixelStore0 + 0]
+    vst64               HorPix0H,[Above, MPO_Y_HorizPixelStore0 + 8]
+    vst64               HorPix1L,[Above, MPO_Y_HorizPixelStore0 + 16]
+    vst64               HorPix1H,[Above, MPO_Y_HorizPixelStore0 + 24]
+    vst64               HorPix2L,[Above, MPO_Y_HorizPixelStore0 + 32]
+    vst64               HorPix2H,[Above, MPO_Y_HorizPixelStore0 + 40]
+    vst64               HorPix3L,[Above, MPO_Y_HorizPixelStore0 + 48]
+    vst64               HorPix3H,[Above, MPO_Y_HorizPixelStore0 + 56]
+ end
+
+ begin
+    // Move over chrom pixel data overlap
+    vec16               PixU0, PixV0, PixU1, PixV1
+    p16                 LeftAboveFlags
+    s16                 IsValid : LeftAboveFlags
+
+    vld8w               'LeftAboveFlags,[Current, MPO_LeftMB]
+    vmovw               'IsValid, MBNF_VALID
+
+    vld32               PixU0,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(12-2) + 4]
+    vld32_2             PixU0,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(12-2) + 4 + 4]
+    vld32               PixU1,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(12-1) + 4]
+    vld32_2             PixU1,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(12-1) + 4 + 4]
+
+    vand                'LeftAboveFlags, 'LeftAboveFlags, IsValid       // Left above exist?
+
+    vld32               PixV0,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(12-2) + 4]
+    vld32_2             PixV0,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(12-2) + 4 + 4]
+    vld32               PixV1,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(12-1) + 4]
+    vld32_2             PixV1,[Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(12-1) + 4 + 4]
+
+    vst64               PixU0,[Above, MPO_U_HorizPixelStore0]
+    vjp!LeftAboveFlags  .exit
+~   vst64               PixU1,[Above, MPO_U_HorizPixelStore1]
+~   vst64               PixV0,[Above, MPO_V_HorizPixelStore0]
+~   vst64               PixV1,[Above, MPO_V_HorizPixelStore1]
+
+ end
+
+ begin
+    // Fix up bottom right corner pixel data for the macro block to the top left,
+    // as could have been modified by deblock
+    // Copies from current buffer to left above
+    p16                 leftAbove
+    s32                 luma0, luma1, luma2, luma3
+    s16                 chromaU0, chromaU1, chromaV0, chromaV1
+
+    vim                 leftAbove, Above, -MPO_SIZE_OF_FIXED_ENTRY
+    vld32               luma0, [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-4) + 4]
+    vld32               luma1, [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-3) + 4]
+    vld32               luma2, [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-2) + 4]
+    vld32               luma3, [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_STRIDE*(20-1) + 4]
+
+    vld16               chromaU0 , [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(12-2) + 2]
+    vld16               chromaU1 , [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_U + PCB_RECONSTRUCTED_STRIDE*(12-1) + 2]
+    vld16               chromaV0 , [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(12-2) + 2]
+    vld16               chromaV1 , [Current, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_V + PCB_RECONSTRUCTED_STRIDE*(12-1) + 2]
+
+    vst32               luma0, [leftAbove, MPO_Y_HorizPixelStore0 + 12]
+    vst32               luma1, [leftAbove, MPO_Y_HorizPixelStore1 + 12]
+    vst32               luma2, [leftAbove, MPO_Y_HorizPixelStore2 + 12]
+    vst32               luma3, [leftAbove, MPO_Y_HorizPixelStore3 + 12]
+
+    vst16               chromaU0, [leftAbove , MPO_U_HorizPixelStore0 + 6]
+    vst16               chromaV0, [leftAbove , MPO_V_HorizPixelStore0 + 6]
+    vst16               chromaU1, [leftAbove , MPO_U_HorizPixelStore1 + 6]
+    vst16               chromaV1, [leftAbove , MPO_V_HorizPixelStore1 + 6]
+ end
+
+
+label exit
+
+
+endfunc
+
+
+
+
+
+
+
+
+
+
+
+

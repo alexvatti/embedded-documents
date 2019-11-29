@@ -1,0 +1,5 @@
+halFrameComposerIsrc.c:23:6:halFrameComposerIsrc_Status	16	static
+halFrameComposerIsrc.c:29:6:halFrameComposerIsrc_Valid	16	static
+halFrameComposerIsrc.c:35:6:halFrameComposerIsrc_Cont	16	static
+halFrameComposerIsrc.c:42:6:halFrameComposerIsrc_Isrc1Codes	24	static
+halFrameComposerIsrc.c:56:6:halFrameComposerIsrc_Isrc2Codes	24	static

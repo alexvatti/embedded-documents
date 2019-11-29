@@ -1,0 +1,16 @@
+halFrameComposerAvi.c:41:6:halFrameComposerAvi_RgbYcc	16	static
+halFrameComposerAvi.c:47:6:halFrameComposerAvi_ScanInfo	16	static
+halFrameComposerAvi.c:53:6:halFrameComposerAvi_Colorimetry	16	static
+halFrameComposerAvi.c:59:6:halFrameComposerAvi_PicAspectRatio	16	static
+halFrameComposerAvi.c:65:6:halFrameComposerAvi_ActiveAspectRatioValid	16	static
+halFrameComposerAvi.c:71:6:halFrameComposerAvi_ActiveFormatAspectRatio	16	static
+halFrameComposerAvi.c:78:6:halFrameComposerAvi_IsItContent	16	static
+halFrameComposerAvi.c:84:6:halFrameComposerAvi_ExtendedColorimetry	16	static
+halFrameComposerAvi.c:91:6:halFrameComposerAvi_QuantizationRange	16	static
+halFrameComposerAvi.c:97:6:halFrameComposerAvi_NonUniformPicScaling	16	static
+halFrameComposerAvi.c:103:6:halFrameComposerAvi_VideoCode	16	static
+halFrameComposerAvi.c:109:6:halFrameComposerAvi_HorizontalBarsValid	0	static
+halFrameComposerAvi.c:114:6:halFrameComposerAvi_HorizontalBars	16	static
+halFrameComposerAvi.c:124:6:halFrameComposerAvi_VerticalBarsValid	0	static
+halFrameComposerAvi.c:129:6:halFrameComposerAvi_VerticalBars	16	static
+halFrameComposerAvi.c:138:6:halFrameComposerAvi_OutPixelRepetition	16	static

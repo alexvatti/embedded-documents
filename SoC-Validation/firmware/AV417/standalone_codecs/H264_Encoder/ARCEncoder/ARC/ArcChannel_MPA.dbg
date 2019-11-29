@@ -1,0 +1,6 @@
+var: p16    i0  intraValidFlag::Generate_ME_SDMResponse
+var: p16    i1  skipMv::Generate_ME_SDMResponse
+var: p16    i0  cost::Generate_ME_SkipResponse
+var: p16    i1  blkPattern::Generate_ME_SkipResponse
+var: p16    i0  cost::Generate_ME_InterResponse
+var: p16    i1  blkPattern::Generate_ME_InterResponse

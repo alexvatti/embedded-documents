@@ -1,0 +1,10 @@
+log.c:21:6:log_SetVerbose	0	static
+log.c:26:6:log_SetNumeric	0	static
+log.c:31:6:log_SetVerboseWrite	0	static
+log.c:36:6:log_PrintWrite	0	static
+log.c:51:6:log_Print0	16	static
+log.c:67:6:log_Print1	16	static
+log.c:83:6:log_Print2	24	static
+log.c:107:6:log_Print3	24	static
+log.c:131:6:log_PrintInt	0	static
+log.c:146:6:log_PrintInt2	8	static

@@ -1,0 +1,391 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+    showstalls
+    setw                120
+    metaware
+    macrotable          Software_SubME,5
+    strict
+
+    include "../ARC/SIMD_ABI.ii"
+
+#include "ArcMPC.h"
+#ifdef MPEG4BUILD
+#include "ArcMP4SDMTables.h"
+#else // MPEG4BUILD
+#include "ArcSDMTables.h"
+#endif // MPEG4BUILD
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"
+#include "ArcSoftwareME_MPA.h"
+
+import Software_ME, 1, endofIter
+import Software_ME, 2, initRDvals
+//----------------------------------------------------------------------------------------------------
+// Is Macro
+// Init members of MPC circular buffer
+// Sets CirBuf
+// Sets FixBuf
+// Sets CirLeft
+p16 PredX = i0, PredY = i1
+p16 VecX = i2, VecY = i3
+p16 PatternMatch = i6
+p16 lambda   = i7
+p16 BestCost = i8
+p16 lastX = i10, lastY = i11
+p16 StepMult = i12
+vec16 result  = vr14
+vec16 PartRes
+
+p16 CirPtr, RefPtr
+
+func.f HalfPelME
+
+
+
+//  this section needed for repositioning data ready for subpel search
+begin //*** of repositioning reference data
+// need to move reference data
+// this depends on the lastX and lastY values calculated in the integer search phase
+p16 offset
+p16 NewPtr
+vec16 ref0, ref1, ref2, ref3
+regmap
+
+// start at (1+lastY)*ME_REFERENCE_ARRAY_STRIDE + SDM_ME_REFERENCE_ARRAY
+#ifdef MPEG4BUILD
+vim   offset, lastY, 2     // 0, 2, or 4
+vmovw 'CirPtr, 9 -1                        // we only require 16 + 1+ 1 rows of ref 
+// set offset to be 0, 1 or 2 lines in
+vmulw 'offset, 'offset, ME_REFERENCE_ARRAY_STRIDE/2
+#else // MPEG4BUILD
+vim   offset, lastY, 4    // 0, 4 or 8 
+vmovw 'CirPtr, 9 -1                        // we only require 16 + 1+ 1 rows of ref 
+// set offset to be 0, 1 or 2 lines in
+vmulw 'offset, 'offset, ME_REFERENCE_ARRAY_STRIDE/4
+#endif // MPEG4BUILD
+
+vjp!lastX              .ShiftZero1           // last horizontal winner was 0
+~vmovw 'NewPtr, SDM_ME_REFERENCE_ARRAY-2*ME_REFERENCE_ARRAY_STRIDE       // dest ptr
+~vim   RefPtr, offset, SDM_ME_REFERENCE_ARRAY // source ptr
+#ifdef MPEG4BUILD
+~vim     offset, lastX, 2
+#else // MPEG4BUILD
+~vim     offset, lastX, 4
+#endif // MPEG4BUILD
+
+vjp!offset            .ShiftRight1          // last horizontal winner was -1
+~vnop
+~vnop
+~vnop
+
+label ShiftLeft1                            // last horizontal winner was +1
+// we need to shift along by 2 pels
+// load two rows at a time
+vld128  ref0, [RefPtr,  0]
+vld128  ref1, [RefPtr, 16]
+vld128  ref2, [RefPtr, 32]
+vld128  ref3, [RefPtr, 48]
+vim     RefPtr, RefPtr, 2*ME_REFERENCE_ARRAY_STRIDE // increment source pointer
+vmr1w   ref0, ref1,ref0     // shift by 2 pixels
+vim     NewPtr, NewPtr, 2*ME_REFERENCE_ARRAY_STRIDE  // increment the output pointer
+vsr8    ref1, ref1, 2       // shift by 2 pixels (don't worry about the top 2 pels, we son't use them
+vmr1w   ref2, ref3,ref2     // shift by 2 pixels
+vst128  ref0, [NewPtr,  0]  // store
+vsr8    ref3, ref3, 2       // shift by 2 pixels (don't worry about the top 2 pels, we son't use them
+
+
+vjd.CirPtr     CirPtr, .ShiftLeft1 
+~vst128  ref1, [NewPtr, 16]
+~vst128  ref2, [NewPtr, 32]  // store
+~vst128  ref3, [NewPtr, 48]
+
+
+vjp                 .EndShift1  // skip to end of repositioning process
+~vnop
+~vnop
+~vnop
+
+
+label    ShiftZero1
+// zero pos horizontally - need to shift right by 1 pels
+
+vld128  ref0, [RefPtr,  0]
+vld128  ref1, [RefPtr, 16]
+vld128  ref2, [RefPtr, 32]
+vld128  ref3, [RefPtr, 48]
+vim     RefPtr, RefPtr, 2*ME_REFERENCE_ARRAY_STRIDE
+vmrb    ref0, ref1,ref0          // shift by 1 pixels
+vim     NewPtr, NewPtr, 2*ME_REFERENCE_ARRAY_STRIDE  // increment the output pointer
+vsr8    ref1, ref1, 1            // shift by 1 pixels
+vmrb    ref2, ref3,ref2          // shift by 1 pixels
+vst128  ref0, [NewPtr,  0]
+vsr8    ref3, ref3, 1            // shift by 1 pixels
+
+vjd.CirPtr     CirPtr, .ShiftZero1
+~vst128  ref1, [NewPtr, 16]
+~vst128  ref2, [NewPtr, 32]  // store
+~vst128  ref3, [NewPtr, 48]
+
+vjp                 .EndShift1
+~vnop
+~vnop
+~vnop
+
+
+label ShiftRight1
+// best x direction was +1
+// this means that we only need to shift the rows really
+
+vld128  ref0, [RefPtr,  0]
+vld128  ref1, [RefPtr, 16]
+vim     NewPtr, NewPtr, 2*ME_REFERENCE_ARRAY_STRIDE
+vld128  ref2, [RefPtr, 32]
+vld128  ref3, [RefPtr, 48]
+vim     RefPtr, RefPtr, 2*ME_REFERENCE_ARRAY_STRIDE
+vst128  ref0, [NewPtr, 0]
+vjd.CirPtr     CirPtr, .ShiftRight1
+~vst128  ref1, [NewPtr, 16]
+~vst128  ref2, [NewPtr, 32]
+~vst128  ref3, [NewPtr, 48]
+
+
+
+label EndShift1
+end //*** of repositioning reference data
+
+
+begin
+p16 row
+vec16 cur0, cur1
+vec16 right0, right1, right2,right3
+vec16 left0, left1, left2, left3
+vec16 zero0, zero1, zero2, zero3
+
+vec16 inputleft1, inputright1, inputleft2, inputright2
+
+regmap
+
+vjl     VSTACK, .initRDvals
+    // rowLoop start
+~vasrw 'StepMult, 'StepMult, 1
+~vnop
+~vnop
+
+
+
+vmovw 'RefPtr, SDM_ME_REFERENCE_ARRAY
+///*  The 8 points in the first step are done in this pattern :       */
+///*                                                                  */
+///*      res2 (-.5,-.5)   res1 (0,-.5)    res0 (.5,-.5)                   */
+///*      res5 (-.5, 0)                    res3 (.5, 0)                   */
+///*      res8 (-.5, .5)   res7 (0, .5)    res6 (.5, .5)                   */
+///*                                                                  */
+// load 12 rows of current data (not enough vecs for all 16) 
+// last 4 rows will be loaded into cur0 - cur4, done like this to avoid re-shifting reference data that
+// is used for several offset calculations
+// assumes that the reference array is loaded with last 18 pels per row valid
+// representing best displacement -1,0000000000000000,+1
+// 
+// indices 1 and 2 will hold cycled integer vertical locations i.e.
+// (-1/2,   n) (0,  n) and (1/2,  n)
+// (-1/2, n+1) (
+vim CirPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y   
+
+
+vld128 inputright1, [RefPtr, 16] // load line of ref
+vld128 inputleft1,  [RefPtr,  0]  // ditto
+vld128 cur0,   [CirPtr, 0]       // load first line of cur
+
+vim    RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE // increment to next row
+vim    CirPtr, CirPtr, PCB_CURRENT_STRIDE        // increment ready to read next line
+
+vmrb   zero1,  inputright1, inputleft1  // get vector 1 pixel displaced
+vmr1w  right1, inputright1, inputleft1  // get vector 2 pixels displaced
+
+vld128 inputright2, [RefPtr,  16] // load next line of ref
+vld128 inputleft2,  [RefPtr,  0 ]  // ditto
+
+vavrb   right1, right1, zero1      // find horizontal half pel displacement
+vavrb   left1,  inputleft1, zero1  
+// now have (-1/2,-1) (0,-1) and (1/2,-1) in left1, zero1, right1
+
+
+vim     RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE // increment to next line
+
+
+vmrb    zero2,  inputright2, inputleft2 // shift by 1 pel
+vmr1w   right2,  inputright2, inputleft2   // shift by 2 pels
+
+    // setup loop counter
+    // 16 rows total, 2 row per loop
+vmovw               'row, 8-1
+
+vavrb   left2,  inputleft2,  zero2  // find horizontal half displacement
+vavrb   right2, right2, zero2       // find horizontal half displacement
+//  (-1/2,  0) (0, 0),  (1/2, 0)   in left2, zero2, right2  index
+
+
+vavrb zero0, zero2, zero1          // average data in index 1 and index 2
+vavrb right0, right2, right1       // ditto
+vavrb left0, left2, left1          // ditto
+// this gives us (-1/2, -1/2) (0, -1/2) and (1/2, -1/2) in left0, zero0, right0
+
+
+// from here loop
+
+label SubHalfLoop
+
+
+vld128 inputright1, [RefPtr, 16]    // load more ref data
+vld128 inputleft1,  [RefPtr,  0]    // load more ref data
+
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE // increment ref pointer
+
+
+vld128  cur1, [CirPtr, 0]           // load next current data row
+vim     CirPtr, CirPtr, PCB_CURRENT_STRIDE  // increment for next line
+
+vmrb   zero1,   inputright1, inputleft1 // find data 1 pel displaced
+vmr1w  right1,  inputright1, inputleft1 // find data 2 pels displaced
+
+
+vld128 inputright2, [RefPtr, 16]    // load next line
+vld128 inputleft2,  [RefPtr,  0]    // load next line
+
+vavrb  right1, right1, zero1        // find 1/2 pel location to the right
+vavrb  left1, inputleft1, zero1     // find 1/2 pel location to the left
+
+vavrb zero3, zero2, zero1           // average
+vavrb left3, left2, left1           // average with previous data
+vavrb right3, right2, right1        // average
+// now    (-1/2,  1/2) (0, 1/2),  (1/2, 1/2) in 3
+
+
+
+// now have two rows of horizontal 1/2 locations (left, zero, right)
+// and  (-1/2,-1/2) (0,-1/2), (1/2,-1/2)  in 0th index
+// and  (-1/2, 1/2) (0, 1/2), (1/2, 1/2)  in 3rd index
+// and  (-1/2,  -1) (0,  -1), (1/2,  -1)  in 2th index
+// and  (-1/2,   0) (0,   0), (1/2,   0)  in 1th index
+
+// now we can start accumulating SADs
+vsadbw.8 PartRes,  cur0, left2 
+vsadbaw.8 PartRes, cur1, left1
+vsadbw.16 PartRes, cur0, right2
+vsadbaw.16 PartRes,cur1, right1
+
+vsadbw.1 PartRes,  cur0, left0
+vsadbaw.1 PartRes, cur1, left3
+vsadbw.2 PartRes,  cur0, zero0
+vsadbaw.2 PartRes, cur1, zero3
+
+vmrb   zero2,   inputright2, inputleft2 // shift by one pel
+vmr1w  right2,  inputright2, inputleft2 // shift by two pels
+
+vsadbw.4 PartRes,  cur0, right0
+vsadbaw.4 PartRes, cur1, right3
+
+
+vavrb   right2, right2, zero2           // average with previous data
+vavrb   left2,  inputleft2,  zero2
+//  (-1/2,  1) (0, 1),  (1/2, 1)   in 2th index
+
+vavrb   right0, right2, right1
+vavrb   left0, left2, left1
+vavrb   zero0, zero2, zero1
+// now    (-1/2,  3/2) (0, 3/2),  (1/2, 3/2) in 0
+vsadbw.32   PartRes, cur0, left3
+vsadbaw.32  PartRes, cur1, left0
+vsadbw.64   PartRes, cur0, zero3
+vsadbaw.64  PartRes, cur1, zero0
+vsadbw.128  PartRes, cur0, right3
+vsadbaw.128 PartRes, cur1, right0
+
+
+vim RefPtr, RefPtr, ME_REFERENCE_ARRAY_STRIDE
+// decrement and loop
+vjd.row             row, .SubHalfLoop
+// to here loop
+~vld128     cur0, [CirPtr, 0]
+~vim        CirPtr, CirPtr, PCB_CURRENT_STRIDE
+~vaddw.255  result, result, PartRes
+end
+
+vjl                 VSTACK, .endofIter
+
+~vnop
+~vnop
+~vnop
+ 
+ 
+endfunc //HalfPelME
+
+func.f SAD_calc
+begin
+vec16 cur0, ref0
+s16 skipsign:BestCost, Bestsign:BestCost, topbit:BestCost
+p16 counter
+vec16 skip<cost:BestCost> = vr29
+vec16 final<cost:BestCost, vecx:VecX, vecy: VecY> = vr30
+vdmawait 0x0, 0x7f
+vmovw topbit, 0x8000
+vmovw       'counter, 16-1
+vxminw.1    'skip_cost, 'lambda, 128
+vim         CirPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y   
+vim         RefPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_REFERENCE_Y   
+
+// skip vector will have Motion bits of 2 in general, so use 2*lambda
+
+vaddw       'skip_cost,  'skip_cost, 'skip_cost // double it
+
+label ThisLoop
+vld128      cur0, [CirPtr, 0]
+vld128      ref0, [RefPtr, 0]
+
+vjd.counter         counter, .ThisLoop
+~vim         CirPtr, CirPtr, PCB_CURRENT_STRIDE
+~vim         RefPtr, RefPtr, PCB_REFERENCE_STRIDE
+~vsadbaw    'skip_cost, cur0, ref0
+
+vxor 'skipsign, 'skip_cost, 'topbit
+vxor 'Bestsign, 'final_cost, 'topbit
+
+vlew.1 counter, 'skipsign, 'Bestsign // set flag if skip is better than best
+vjp!counter .End
+~vnop
+~vnop
+~vnop
+vmvw.1      final, skip
+vmvw.12     final, vr00 // save input vecs
+
+
+label End
+end
+
+endfunc
+
+func Set_Skip_Large
+begin
+
+vec16 skipres = vr30 // to avoid conficts
+vmovw skipres, 0xFFFF, 1
+vmovw skipres, 0x0, 12 // zero vectors
+end
+endfunc
+
+

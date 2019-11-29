@@ -1,0 +1,4 @@
+
+memctl.o:	H264DecoderLib/memctl.c \
+	H264DecoderLib/arc_codecs.h H264DecoderLib/memctl.h \
+	H264DecoderLib/vbuf.h 

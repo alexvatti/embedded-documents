@@ -1,0 +1,5 @@
+cmd_yuvtobmp.c:400:12:do_rgb2bmp_help	8	static
+cmd_yuvtobmp.c:285:12:do_yuv2bmp_help	8	static
+cmd_yuvtobmp.c:307:12:do_rgb2bmp	40	static
+cmd_yuvtobmp.c:29:6:convert_yuvtorbg	96	static
+cmd_yuvtobmp.c:246:12:do_yuv2bmp	40	static

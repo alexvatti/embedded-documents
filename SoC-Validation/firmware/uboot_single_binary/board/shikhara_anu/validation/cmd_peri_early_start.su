@@ -1,0 +1,8 @@
+cmd_peri_early_start.c:165:5:do_kmi_start	8	static
+cmd_peri_early_start.c:140:5:do_i2c_start	8	static
+cmd_peri_early_start.c:126:5:do_can_start	8	static
+cmd_peri_early_start.c:111:5:do_flash_start	8	static
+cmd_peri_early_start.c:84:5:do_nor_start	8	static
+cmd_peri_early_start.c:70:5:do_nand_start	8	static
+cmd_peri_early_start.c:55:5:do_mmc_start	8	static
+cmd_peri_early_start.c:40:5:do_kbd_start	8	static

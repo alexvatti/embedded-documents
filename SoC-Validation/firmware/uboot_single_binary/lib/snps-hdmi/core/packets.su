@@ -1,0 +1,17 @@
+packets.c:101:6:packets_AudioContentProtection	40	static
+packets.c:136:6:packets_IsrcPackets	56	static
+packets.c:188:6:packets_AudioInfoFrame	16	static
+packets.c:244:6:packets_AvMute	16	static
+packets.c:249:6:packets_IsrcStatus	16	static
+packets.c:254:6:packets_StopSendAcp	8	static
+packets.c:260:6:packets_StopSendIsrc1	8	static
+packets.c:267:6:packets_StopSendIsrc2	8	static
+packets.c:274:6:packets_StopSendSpd	8	static
+packets.c:280:6:packets_StopSendVsd	8	static
+packets.c:286:6:packets_GamutMetadataPackets	16	static
+packets.c:300:6:packets_DisableAllPackets	8	static
+packets.c:25:5:packets_Initialize	8	static
+packets.c:306:5:packets_SourceProductInfoFrame	32	static
+packets.c:351:5:packets_VendorSpecificInfoFrame	24	static
+packets.c:372:6:packets_AuxiliaryVideoInfoFrame	24	static
+packets.c:32:5:packets_Configure	64	static

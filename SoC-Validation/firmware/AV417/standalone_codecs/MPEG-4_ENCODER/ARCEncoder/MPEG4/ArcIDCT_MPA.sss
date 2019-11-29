@@ -1,0 +1,362 @@
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// strictly forbidden.  ARC and the ARC logotype are trademarks of //
+// ARC International.                                              //
+
+
+
+//	showstalls
+//	vec16	Scalars0 = vr00, Scalars1 = vr01
+
+	metaware
+    
+
+    include "../ARC/SIMD_ABI.ii"    
+
+	
+	
+	macrotable	Idct,8
+	strict
+    
+#include "ArcMPC.h"
+#include "ArcMP4SDMTables.h"
+#include "ArcChannelRoutines.h"
+#include "ArcMacroRecordSettings.h"    
+//------------------------------------------------------------------------------
+// Name:          IDCTBlock
+// Purpose:       provide the Inverse DCT for an individual 8x8 block in situ 
+// Arguments:     8 rows of words in vector registers 2 to 9 inclusive
+// Return Value:  void
+//------------------------------------------------------------------------------
+      
+func.s IDCTBlock // in place IDCT
+// parameters
+vec16   row0 = vr02
+vec16   row1 = vr03
+vec16   row2 = vr04
+vec16   row3 = vr05
+vec16   row4 = vr06
+vec16   row5 = vr07
+vec16   row6 = vr08
+vec16   row7 = vr09
+
+
+
+vec16   work8 = vr22
+vec16   work9 = vr23
+vec16   work10= vr24
+vec16   work11= vr25
+ // working vecs, named for compatibility with C code
+    vbmulw   row0,  row0,  16 
+    vbmulw   row1,  row1,  16 
+    vbmulw   row2,  row2,  16 
+    vbmulw   row3,  row3,  16 
+    vbmulw   row4,  row4,  16 
+    vbmulw   row5,  row5,  16 
+    vbmulw   row6,  row6,  16 
+    vbmulw   row7,  row7,  16
+    // transpose the matrix
+    vexch1   row0,  row1 
+    vexch1   row2,  row3 
+    vexch1   row4,  row5 
+    vexch1   row6,  row7 
+    vexch2   row0,  row2 
+    vexch2   row1,  row3 
+    vexch2   row4,  row6 
+    vexch2   row5,  row7 
+    vexch4   row0,  row4 
+    vexch4   row1,  row5 
+    vexch4   row2,  row6 
+    vexch4   row3,  row7 
+
+
+    vbmulfw   row0,  row0, 23170 
+    vbmulfw   work8, row1, 23170 
+    vbmulfw   row1,  row4, 23170 
+    vbmulfw   row4,  row7, 23170 
+
+
+    vbmulfw   row7,  row2,  12540 
+    vaddsuw   row0,  row1 
+    vaddsuw   work8, row4
+
+ 
+    vbmulfw   work9,  row6,  30274 
+    vbmulfw   work10, row2,  30274 
+    vbmulfw   row6,   row6,  12540 
+    vsubw     row2,   row7,  work9 
+    vaddsuw   work8,  row3 
+    vaddsuw   row4,   row5 
+
+
+    vbmulfw  work9,  row3,  32138 
+
+
+    vbmulfw   row7,  row3,  6393 
+    vaddw     row3,  work10,  row6 
+    vaddsuw   row1,  row2 
+    vaddsuw   row0,  row3 
+    vbmulfw   work10,row5,  6393 
+    vbmulfw   row6,  row5,  32138 
+
+
+    vbmulfw   work11,row4, 27246 
+    vsubw     row5,  work9,  work10 
+    vaddw     row6,  row7,  row6 
+
+
+    vbmulfw   work9,  work8, 18205 
+    vbmulfw   row7,   row4, 18205 
+    vbmulfw   work8,  work8, 27246 
+
+    vaddsuw   row1,  row6 
+    vsubw     row4,  work11,  work9 
+    vaddw     row7,  row7,  work8 
+    vaddsuw   row2,  row5 
+    vaddsuw   row0,  row7 
+    vaddsuw   row3,  row4
+
+    vexch1   row0,  row1 
+    vexch1   row2,  row3 
+    vexch1   row4,  row5 
+    vexch1   row6,  row7 
+    vexch2   row0,  row2 
+    vexch2   row1,  row3 
+    vexch2   row4,  row6 
+    vexch2   row5,  row7 
+    vexch4   row0,  row4 
+    vexch4   row1,  row5 
+    vexch4   row2,  row6 
+    vexch4   row3,  row7
+
+ 
+    vbmulfw   row0,  row0, 23170 
+    vbmulfw   work8, row1, 23170 
+    vbmulfw   row1,  row4, 23170 
+    vbmulfw   row4,  row7, 23170 
+
+
+    vbmulfw   row7,  row2, 12540 
+    vaddsuw   row0,  row1 
+    vaddsuw   work8, row4 
+
+
+    vbmulfw   work9,  row6,  30274 
+    vbmulfw   work10, row2,  30274 
+    vbmulfw   row6,   row6,  12540 
+    vsubw     row2,   row7,  work9 
+    vaddsuw   work8,  row3 
+    vaddsuw   row4,   row5 
+
+
+    vbmulfw   work9,  row3,  32138 
+
+
+    vbmulfw   row7,  row3,   6393 
+    vaddw     row3,  work10, row6 
+    vaddsuw   row1,  row2 
+    vaddsuw   row0,  row3 
+    vbmulfw   work10,row5,   6393 
+    vbmulfw   row6,  row5,   32138 
+
+ 
+    vbmulfw   work11,  row4,  27246 
+    vsubw     row5,    work9, work10 
+    vaddw     row6,    row7,  row6 
+
+
+    vbmulfw   work9,  work8, 18205 
+    vbmulfw   row7,   row4,  18205 
+    vbmulfw   work8,  work8, 27246 
+    vaddsuw   row1,   row6 
+    vsubw     row4,   work11,work9 
+    vaddw     row7,   row7,  work8 
+
+    vaddsuw   row2,  row5 
+    vaddsuw   row0,  row7 
+    vaddsuw   row3,  row4
+
+    vasrsrw   row0,  row0,  6 
+    vasrsrw   row1,  row1,  6 
+    vasrsrw   row2,  row2,  6 
+    vasrsrw   row3,  row3,  6 
+    vasrsrw   row4,  row4,  6 
+    vasrsrw   row5,  row5,  6 
+    vasrsrw   row6,  row6,  6 
+    vasrsrw   row7,  row7,  6
+  
+   // clip to -256
+   vmaxw    row0, row0, -256
+   vmaxw    row1, row1, -256
+   vmaxw    row2, row2, -256
+   vmaxw    row3, row3, -256
+   vmaxw    row4, row4, -256
+   vmaxw    row5, row5, -256
+   vmaxw    row6, row6, -256
+   vmaxw    row7, row7, -256
+   // clip to 255
+   vminw    row0, row0, 255
+   vminw    row1, row1, 255
+   vminw    row2, row2, 255
+   vminw    row3, row3, 255
+   vminw    row4, row4, 255
+   
+     // return to caller
+    vjb                 VSTACK, 0
+
+    // delay slots start
+   vminw    row5, row5, 255
+   vminw    row6, row6, 255
+   vminw    row7, row7, 255
+    // delay slots end  
+    
+endfunc  
+
+//------------------------------------------------------------------------------
+// Name:          IDCT
+// Purpose:       provide the Inverse DCT for the entire MB, avoiding blocks with no coefficients
+// Arguments:     requires 8 rows of input word data in vector registers 2 to 9
+// Return Value:  void
+//------------------------------------------------------------------------------
+    
+func.f		IDCT
+	
+begin
+
+p16 blkInOffset       = i0
+p16 block_no          = i1
+
+vec16   row0 = vr02
+vec16   row1 = vr03
+vec16   row2 = vr04
+vec16   row3 = vr05
+vec16   row4 = vr06
+vec16   row5 = vr07
+vec16   row6 = vr08
+vec16   row7 = vr09
+p16     cirPtr 
+s16     blockdouble : cirPtr
+p16     temp
+
+p16     ptr
+vec16   work8, work9, work10, work11 // working vecs, named for compatibility with C code
+
+//s16     shiftval : temp
+s16     Intra : temp
+s16     cbp : Intra
+p16     zero
+s16     tempblk: temp
+
+    regmap
+
+   vmovw  'zero, 0
+    // set Intra flag
+    vld8w       'Intra,[CirBuf, MPO_MBCodingType]
+    vand        'Intra, 'Intra, MBCT_MPEG4_INTRA
+    // load cbp
+    vld16       'cbp, [CirBuf,  MPO_NonZeroCoeffLuma] // load cbp
+ 
+   
+    // initialise block_no to first block
+    vmovw     'block_no, 0
+  // main block loop starts here
+ label BlockLoop
+    move16       blockdouble, block_no
+    vaddw        blockdouble, blockdouble, blockdouble // needed for indexing short arrays
+
+// work out if block is not coded and not Intra, if so we can skip all this
+
+    move16       tempblk, block_no
+
+    vim          temp, zero, 2048              // temp = 1<<11
+    vlsrvw      'temp, 'temp, 'tempblk     // temp =  1<<(11-block_no)
+    vand        'temp, 'cbp, 'temp         // see if relevant bit of cbp is set
+    
+    vor         'temp, 'temp, 'Intra         // if cbp is set for this block or we have an Intra MB
+    
+    vim         cirPtr, zero, SDMOF_mpeg4_diff_pixel_offset
+    vaddw       'cirPtr, 'cirPtr, blockdouble 
+    vld16       'blkInOffset, [cirPtr, 0 ] // read offset for this block in MP0_PixelCoeffBuffer
+
+  
+    vim         cirPtr, CirBuf, MPO_PixelCoeffBuffer
+    vaddw       'cirPtr, 'cirPtr, blkInOffset  // set base address for this blocks data
+    
+    
+    vjp!temp    .SkipBlock
+    vnop    
+    vnop
+    vnop
+   
+    // load input data
+    vld128   row0,  [ cirPtr,  0x00]   
+    vld128   row1,  [ cirPtr,  0x20]    
+    vld128   row2,  [ cirPtr,  0x40]    
+    vld128   row3,  [ cirPtr,  0x60]   
+    vld128   row4,  [ cirPtr,  0x80]   
+    vld128   row5,  [ cirPtr,  0xA0]   
+    vld128   row6,  [ cirPtr,  0xC0]   
+    vld128   row7,  [ cirPtr,  0xE0]   
+    // Convert input coefficients to 12Q4 format and transpose to column fmt.
+    // This may eventually be done in the dequantization step
+    //
+    
+    vjl     VSTACK,.IDCTBlock
+    vnop
+    vnop
+    vnop
+ 
+//
+
+// store back in circular buffer
+    vst128   row0,  [ cirPtr,  0x00]    
+    vst128   row1,  [ cirPtr,  0x20]    
+    vst128   row2,  [ cirPtr,  0x40]    
+    vst128   row3,  [ cirPtr,  0x60]    
+    vst128   row4,  [ cirPtr,  0x80]    
+    vst128   row5,  [ cirPtr,  0xA0]    
+    vst128   row6,  [ cirPtr,  0xC0]   
+    vst128   row7,  [ cirPtr,  0xE0]   
+
+
+    vjp     .EndBlock // avoid the skip bit
+    vnop
+    vnop
+    vnop
+label       DC_Only
+// if only DC terms, then all outputs will be the same value, so 
+// don't bother doing the  inverse transform
+
+ // end of Main Block Loop
+ label      SkipBlock
+
+    vst128      VZERO, [cirPtr, 0xE0] 
+            // in case mpeg4 and last coeff's value was toggled, this can probably be removed later
+            // after the dequant function is skipped when cbp is zero
+ 
+ label      EndBlock
+    vim         block_no, block_no, 1 // increment block counter
+    
+// check to see if we have done all blocks
+    vim        temp, block_no, -6    // check to see if all 6 blocks processed
+    
+    vjp.temp    .BlockLoop          // loop back if block_no < 6
+    vnop
+    vnop
+    vnop   
+    
+    
+	end
+endfunc		IDCT
+

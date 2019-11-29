@@ -1,0 +1,2 @@
+cmd_uart1_dmamin.c:158:5:dual_dma_uart1	24	static
+cmd_uart1_dmamin.c:312:5:do_loopdualdma	8	static

@@ -1,0 +1,3 @@
+cmd_dttest.c:64:5:do_sysconfig_test	40	static
+cmd_dttest.c:47:6:DT1_handler	16	static
+cmd_dttest.c:28:6:DT0_handler	8	static

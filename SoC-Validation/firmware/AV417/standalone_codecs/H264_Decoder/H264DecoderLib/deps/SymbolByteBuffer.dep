@@ -1,0 +1,4 @@
+
+SymbolByteBuffer.o:	\
+	./H264DecoderLib/VideoCommon/SymbolByteBuffer.cpp \
+	./H264DecoderLib/VideoCommon/SymbolByteBuffer.h 

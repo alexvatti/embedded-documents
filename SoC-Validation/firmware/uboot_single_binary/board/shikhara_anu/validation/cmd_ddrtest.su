@@ -1,0 +1,2 @@
+cmd_ddrtest.c:8:5:ddr_test	24	static
+cmd_ddrtest.c:55:5:do_ddr_test	8	static

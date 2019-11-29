@@ -1,0 +1,4 @@
+shortVideoDesc.c:14:6:shortVideoDesc_Reset	0	static
+shortVideoDesc.c:20:5:shortVideoDesc_Parse	16	static
+shortVideoDesc.c:28:10:shortVideoDesc_GetCode	0	static
+shortVideoDesc.c:33:5:shortVideoDesc_GetNative	0	static

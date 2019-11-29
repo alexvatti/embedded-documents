@@ -1,0 +1,4 @@
+halIdentification.c:17:4:halIdentification_Design	8	static
+halIdentification.c:23:4:halIdentification_Revision	8	static
+halIdentification.c:29:4:halIdentification_ProductLine	8	static
+halIdentification.c:35:4:halIdentification_ProductType	8	static

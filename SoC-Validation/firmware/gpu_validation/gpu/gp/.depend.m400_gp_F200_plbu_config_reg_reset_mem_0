@@ -1,0 +1,3 @@
+m400_gp_F200_plbu_config_reg_reset_mem_0.o: \
+ m400_gp_F200_plbu_config_reg_reset_mem_0.c \
+ m400_gp_F200_plbu_config_reg_reset_mem_0.h

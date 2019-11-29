@@ -1,0 +1,2 @@
+cmd_dma_uartapi.c:35:6:shikara_dma_cb	8	static
+cmd_dma_uartapi.c:168:5:do_dma_api_uart	32	static

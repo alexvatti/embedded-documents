@@ -1,0 +1,7 @@
+shikhara_hdmi_helper.c:204:5:do_hdmi_disable	8	static
+shikhara_hdmi_helper.c:184:5:do_hdmi_enable	8	static
+shikhara_hdmi_helper.c:50:5:do_hdmi_dump	32	static
+shikhara_hdmi_helper.c:15:6:hdmi_writeb	0	static
+shikhara_hdmi_helper.c:19:4:hdmi_readb	0	static
+shikhara_hdmi_helper.c:29:6:hdmi_mask_writeb	0	static
+shikhara_hdmi_helper.c:36:6:hdmi_clear_overflow	0	static

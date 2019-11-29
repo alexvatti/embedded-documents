@@ -1,0 +1,13 @@
+#SHIKHARA Text Base Address
+
+ifdef CONFIG_SHIKHARA_ASIC
+CONFIG_SPL_TEXT_BASE =0xD45BC000
+CONFIG_BL0_TEXT_BASE =0xD4700000
+else
+ifdef CONFIG_BL1_IMAGE
+CONFIG_SPL_TEXT_BASE =0x5D5C0040  #when image is added to bl1 then use spl text base as 0x5d5c0040 where extra 40 is image size
+else
+CONFIG_SPL_TEXT_BASE =0x5D5C0000
+endif
+CONFIG_BL0_TEXT_BASE =0x5D5B0000
+endif

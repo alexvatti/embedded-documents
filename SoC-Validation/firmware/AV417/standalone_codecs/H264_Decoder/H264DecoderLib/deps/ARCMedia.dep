@@ -1,0 +1,3 @@
+
+ARCMedia.o:	./H264DecoderLib/H264SIMDDec/ARCMedia.cpp \
+	./H264DecoderLib/H264SIMDDec/ARCMedia.h 

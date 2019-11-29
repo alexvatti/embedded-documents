@@ -1,0 +1,7 @@
+halAudioGpa.c:20:6:halAudioGpa_ResetFifo	8	static
+halAudioGpa.c:26:6:halAudioGpa_ChannelEnable	16	static
+halAudioGpa.c:32:6:halAudioGpa_HbrEnable	16	static
+halAudioGpa.c:39:6:halAudioGpa_InsertPucv	16	static
+halAudioGpa.c:45:4:halAudioGpa_InterruptStatus	8	static
+halAudioGpa.c:51:6:halAudioGpa_InterruptMask	16	static
+halAudioGpa.c:57:6:halAudioGpa_InterruptPolarity	16	static

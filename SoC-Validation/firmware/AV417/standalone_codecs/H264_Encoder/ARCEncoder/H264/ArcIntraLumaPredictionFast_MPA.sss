@@ -1,0 +1,1050 @@
+//debuginfo
+// CONFIDENTIAL AND PROPRIETARY INFORMATION                        //
+// Copyright 2007 ARC International (Unpublished)                  //
+// All Rights Reserved.                                            //
+//                                                                 //
+// This document, material and/or software contains confidential   //
+// and proprietary information of ARC International and is         //
+// protected by copyright, trade secret and other state, federal,  //
+// and international laws, and may be embodied in patents issued   //
+// or pending.  Its receipt or possession does not convey any      //
+// rights to use, reproduce, disclose its contents, or to          //
+// manufacture, or sell anything it may describe.  Reverse         //
+// engineering is prohibited, and reproduction, disclosure or use  //
+// without specific written authorization of ARC International is  //
+// ARC International.                                              //
+
+
+
+
+
+#include "ArcSDMTables.h"
+#include "ArcMPC.h"
+#include "defines.h"
+
+
+showstalls
+setw                108
+metaware
+strict
+
+include "../ARC/SIMD_ABI.ii"
+
+macrotable IntraLumaPredictionFast, 3
+
+
+
+//------------------------------------------------------------------------------
+// Global Function Arguments
+p16                 intraValidFlag = i0 // same as chroma
+pubreg              intraValidFlag
+p16                 intra_16x16_mode = i1
+p16                 intraLumaCost = i2
+p16                 intra_16x16_modeOffset = i9 // needs to be in the same lane as intra_16x16_mode = i1
+
+
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntra16x16PredictionFastAll
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f GenerateIntra16x16PredictionFastAll
+    // function arguments
+    // intraValidFlag = i0
+
+begin //1
+    p16                 aboveOk
+    p16                 leftOk
+
+    p16                 predPtr
+
+    p16                 lambdaMult10_30
+
+    vec16               vertPred8
+    vec16               vertPred16Lo <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+    vec16               vertPred16Hi <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+
+    vec16               horizPred16Lo <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+    vec16               horizPred16Hi <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+
+    vec16               dcPred8
+    vec16               dcPred16
+
+    vec16               intraValidFlagVec
+
+    vec16               vertSad
+    vec16               horizSad
+    vec16               dcSad
+
+begin // 2
+    p16                 quantValue
+    p16                 lambdaLutPtr
+
+    // get quantiser value
+    vld8w               'quantValue, CirBuf, MPO_QuantValue
+
+    // broadcast intraValidFlag across all lanes
+    vmivw               intraValidFlagVec, intraValidFlag
+
+    // zero dc_prediction, as it's formed by accumulation
+    vmovw               dcPred16, 0
+
+    // check if above is valid
+    via                 aboveOk, intraValidFlag, 2
+
+    // setup global value pointers
+    vim                 lambdaLutPtr, quantValue, SDMOF_h264_encoder_rd_sad_lambda
+
+    // check if left is valid
+    via                 leftOk, intraValidFlag, 1
+
+    // setup global lambda value
+    vld8w               'lambdaMult10_30, lambdaLutPtr, 0
+
+    // reset dc sad
+    vmovw               dcSad, 0
+
+    // if above or left is valid then set corresponding lane to 0xffff
+    vnew                'aboveOk'leftOk, 'aboveOk'leftOk, VZERO
+
+    // set vertical sad to max value
+@   mov                 r0, 0xffff
+    vmovw               vertSad, r0
+
+    // set horizontal sad to max value
+@   mov                 r0, 0xffff
+    vmovw               horizSad, r0
+
+    // we do a final adjust of the cost by adding 10 times lambda
+    vmulw               'lambdaMult10_30, 'lambdaMult10_30, 10
+
+end // 2
+
+    // setup source pointer for horizontal
+    vim.leftOk          predPtr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + PCB_RECONSTRUCTED_STRIDE-1
+
+
+
+    // vertical prediction (mode = 0)
+label verticalPrediction
+
+    // check if above is valid
+    vjp!aboveOk         .horizontalPrediction
+
+    // delay slots start
+
+    // get intra prediction pixels for A
+~   vld64w.aboveOk      vertPred16Lo, FixBuf, MPO_Y_IntraPredPixel + 0
+~   vld64w.aboveOk      vertPred16Hi, FixBuf, MPO_Y_IntraPredPixel + 8
+~   vld128.aboveOk      vertPred8, FixBuf, MPO_Y_IntraPredPixel + 0
+
+    // delay slots end
+    
+
+    // following can't be in delay slots
+    // reset sad if doing vertical
+    vmovw               vertSad, 0
+
+    // following can't be in delay slots
+    // accumulate intra prediction pixels A into dc prediction vector
+    vaddw               dcPred16, vertPred16Lo, vertPred16Hi
+
+
+    // horizontal prediction (mode = 1)
+label horizontalPrediction
+
+    // check if left is valid
+    vjp!leftOk          .dcPrediction
+
+    // delay slots start
+
+    // load 8 bit predictions
+~   vld8w.leftOk        'horizPred16Lo_Term0, predPtr, 0 * PCB_RECONSTRUCTED_STRIDE
+~   vld8w.leftOk        'horizPred16Lo_Term1, predPtr, 1 * PCB_RECONSTRUCTED_STRIDE
+~   vld8w.leftOk        'horizPred16Lo_Term2, predPtr, 2 * PCB_RECONSTRUCTED_STRIDE
+
+    // delay slots end
+
+
+    vld8w               'horizPred16Lo_Term3, predPtr, 3 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term4, predPtr, 4 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term5, predPtr, 5 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term6, predPtr, 6 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term7, predPtr, 7 * PCB_RECONSTRUCTED_STRIDE
+
+    vld8w               'horizPred16Hi_Term0, predPtr, 8 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term1, predPtr, 9 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term2, predPtr, 10 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term3, predPtr, 11 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term4, predPtr, 12 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term5, predPtr, 13 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term6, predPtr, 14 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term7, predPtr, 15 * PCB_RECONSTRUCTED_STRIDE
+
+    // accumulate intra prediction pixel
+    vaddw               VZERO, horizPred16Lo, horizPred16Hi
+
+    // following can't be in delay slots
+    // reset sad if doing horizontal
+    vmovw               horizSad, 0
+
+    // accumulate prediction into dc prediction vector
+    vaddaw               dcPred16, dcPred16, VZERO
+
+
+    // dc prediction (mode = 2)
+label dcPrediction
+
+    // compare intraValidFlag to see if neither above and left are available and
+    // broadcast flag across all lanes
+    vsubw.0xff.f        VZERO, intraValidFlagVec, 0
+
+    // clear the sticky flags
+    vclrstk.0xff.al
+
+    // set the sticky flags if both above and left are available
+    vseqw.0xff          intraValidFlagVec, 3
+
+    // setup source value
+    // if neither above or left are available then use default of 128
+@   mov                 r0, 0x0080
+    vmovw.0xff.eq       dcPred16, r0
+
+    // sum all lanes of dc_prediction vector and broadcast across whole vector
+    vxsumw.0xff.ne      dcPred16, dcPred16, 0xff
+
+    // if both above and left are available then add rounding of 16 and divide by 32
+    vasrrw.0xff.ne.s    dcPred16, dcPred16, 5
+    
+    // if only one of above or left are available then add rounding of 8 and divide by 16
+    vasrrw.0xff.ne!s    dcPred16, dcPred16, 4
+
+    // duplicate prediction into both bytes of the 16 bit lanes to for the 8 bit version
+    vmulw.0xff          dcPred8, dcPred16, 0x0101
+
+
+    // calculate sads
+begin // 2
+    p16                 srcPtr
+    p16                 resPtr
+    p16                 horizPtr
+
+    p16                 row
+
+    vec16               source0
+    vec16               source1
+    vec16               source2
+    vec16               source3
+
+    vec16               residual0
+    vec16               residual1
+    vec16               residual2
+    vec16               residual3
+
+    vec16               horizPred16A
+    vec16               horizPred16B
+
+    // setup loop counter
+    // 16 rows total, 2 rows per loop
+    vmovw               'row, (16/2)-1
+
+    // setup arguments for sad calculation
+    vim                 srcPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y
+
+    // only use predPtr for horizontal sad calculation
+    vim                 predPtr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + PCB_RECONSTRUCTED_STRIDE-1
+
+begin // 3
+    vec16               vertTemp
+    vec16               horizTemp
+    vec16               dcTemp
+
+
+    // sadLoop start
+label sadLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, srcPtr, 0
+    vld64w              source1, srcPtr, 8
+    vld64w              source2, srcPtr, 16
+    vld64w              source3, srcPtr, 24
+
+
+    // accumulate vertical sad by calculating residual (9 bits stored in 16 bits per pixel)
+    // and then absoluting before accumulating
+    vdifw               VZERO, source0, vertPred16Lo
+    vdifaw              VZERO, source1, vertPred16Hi
+    vdifaw              VZERO, source2, vertPred16Lo
+    vdifaw              vertTemp, source3, vertPred16Hi
+
+
+    // duplicate horizontal prediction into all vector lanes
+    vxsumw.0xff         horizPred16A, horizPred16Lo_Term0, {horizPred16Lo_Term0}
+    vxsumw.0xff         horizPred16B, horizPred16Lo_Term1, {horizPred16Lo_Term1}
+
+    // shift vectors down by 2 lanes to get the next terms in lane 0 and 1
+    vmr2w               horizPred16Lo, horizPred16Hi, horizPred16Lo
+    vmr2w               horizPred16Hi, VZERO, horizPred16Hi
+
+    // accumulate horizontal sad by calculating residual (9 bits stored in 16 bits per pixel)
+    // and then absoluting before accumulating
+    vdifw               VZERO, source0, horizPred16A
+    vdifaw              VZERO, source1, horizPred16A
+    vdifaw              VZERO, source2, horizPred16B
+    vdifaw              horizTemp, source3, horizPred16B
+
+
+    // accumulate dc sad by calculating residual (9 bits stored in 16 bits per pixel)
+    // and then absoluting before accumulating
+    vdifw               VZERO, source0, dcPred16
+    vdifaw              VZERO, source1, dcPred16
+    vdifaw              VZERO, source2, dcPred16
+    vdifaw              dcTemp, source3, dcPred16
+
+    // increament pointers
+    vim                 srcPtr, srcPtr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+
+    // decrement and loop
+    vjd.row             row, .sadLoop
+
+    // delay slots start
+
+    // sum temporary accumulated sads into total sads
+~   vaddw.aboveOk       vertSad, vertSad, vertTemp
+~   vaddw.leftOk        horizSad, horizSad, horizTemp
+~   vaddw               dcSad, dcSad, dcTemp
+
+    // delay slots end
+
+
+end // 3
+
+    // sum across all lanes of the sads back into all the lanes, so that compare will set flags across all lanes
+    vxsumw.aboveOk      vertSad, vertSad, 0xff
+    vxsumw.leftOk       horizSad, horizSad, 0xff
+    vxsumw.0xff         dcSad, dcSad, 0xff
+
+begin // 3
+    vec16               constHex8000
+
+    // exclusive-or the sad values to force 16 bit unsigned values into 16 bit signed values that can be compared
+    vmovw               constHex8000, 0x8000
+    vxor                vertSad, vertSad, constHex8000
+    vxor                horizSad, horizSad, constHex8000
+    vxor                dcSad, dcSad, constHex8000
+
+
+    // compare vertical and horizontal sads
+    vsubw.f             VZERO, vertSad, horizSad
+
+    // if sad comparison is less than or equal then choose vertical
+    vmvw.{intraLumaCost}.le 'intraLumaCost, vertSad
+
+    // else choose horizontal
+    vmvw.{intraLumaCost}.gt 'intraLumaCost, horizSad
+
+    // if sad comparison is less than or equal then choose vertical
+    vmovw.le            'intra_16x16_mode, MBIM_H264_Y_VERTICAL // setup global intra16x16 mode value
+
+    // else choose horizontal
+    vmovw.gt            'intra_16x16_mode, MBIM_H264_Y_HORIZONTAL // setup global intra16x16 mode value
+
+    // compare dc and best so far sads
+    vsubw.f          VZERO, dcSad, intraLumaCost
+
+    // if sad comparison is less than then choose dc, otherwise stick with the best so far
+    vmovw.lt            'intra_16x16_mode, MBIM_H264_Y_DC // setup global intra16x16 mode value
+    vmvw.{intraLumaCost}.lt 'intraLumaCost, dcSad
+
+    // exclusive-or the best sad value to restore to a 16 bit unsigned value
+    vxor.{intraLumaCost} 'intraLumaCost, 'intraLumaCost, constHex8000
+
+end // 3
+
+
+    // setup offset for prediction pointer
+    vmulw               'intra_16x16_modeOffset, 'intra_16x16_mode, (16*16) // 1 byte per pixel
+
+begin // 3
+    p16                 jumpFlag
+
+    // setup jump flag
+    viv                 jumpFlag, 'intra_16x16_mode
+
+    // setup source pointer for residual generation
+    vim                 srcPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y
+
+    // setup prediction pointer for residual generation
+    vim                 predPtr, intra_16x16_modeOffset, SDMOF_IntraPredictionLuma
+
+
+    // if best intra mode is 0 then choose vertical
+    vjp!jumpFlag        .verticalResult
+
+    // delay slots start
+
+    // setup offset for residual pointer
+~   vmulw               'intra_16x16_modeOffset, 'intra_16x16_mode, (16*16*2) // 2 bytes per pixel
+
+    // decreament jmupFlag and try next mode
+~   vim                 jumpFlag, jumpFlag, -1
+
+    // setup loop counter
+    // 16 rows total, 2 rows per loop
+~   vmovw               'row, (16/2)-1
+
+    // delay slots end
+
+
+    // if best intra mode is 1 then choose horizontal
+    vjp!jumpFlag        .horizontalResult
+
+    // delay slots start
+
+    // setup source pointer
+~   vim                 horizPtr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + PCB_RECONSTRUCTED_STRIDE-1
+
+    // setup residual pointer for residual generation
+~   vim                 resPtr, intra_16x16_modeOffset, SDMOF_IntraPredictionResidsLuma
+
+    // nothing else to setup before starting horizontal result loop
+~   vnop
+
+    // delay slots end
+
+
+    // if best intra mode is 0 then choose dc
+
+end // 3
+
+    // dc prediction choosen
+label dcResult
+
+    // nothing else to setup before starting dc result loop
+
+
+    // dcResidLoop start
+label dcResidLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, srcPtr, 0
+    vld64w              source1, srcPtr, 8
+    vld64w              source2, srcPtr, 16
+    vld64w              source3, srcPtr, 24
+
+    // store prediction (8 bits per pixel)
+    vst128              dcPred8, predPtr, 0
+    vst128              dcPred8, predPtr, 16
+
+    // generate residual (9 bits stored in 16 bits per pixel)
+    vsubw               residual0, source0, dcPred16
+    vsubw               residual1, source1, dcPred16
+    vsubw               residual2, source2, dcPred16
+    vsubw               residual3, source3, dcPred16
+
+    // store residual (16 bits per pixel)
+    vst128              residual0, resPtr, 0
+    vst128              residual1, resPtr, 16
+    vst128              residual2, resPtr, 32
+    vst128              residual3, resPtr, 48
+
+    // decrement and loop
+    vjd.row             row, .dcResidLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 srcPtr, srcPtr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 predPtr, predPtr, 16*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 resPtr, resPtr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+    // jump to end
+    vjp                 .exit
+
+    // delay slots start
+
+    // scale final cost for comparison against inter
+~   vaddw               'intraLumaCost, 'intraLumaCost, lambdaMult10_30
+
+    // save mode
+~   vst8                'intra_16x16_mode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+
+    // save cost
+~   vst16               'intraLumaCost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+    // delay slots end
+
+
+    // vertical prediction choosen
+label verticalResult
+
+    // setup residual pointer for residual generation
+    vim                 resPtr, intra_16x16_modeOffset, SDMOF_IntraPredictionResidsLuma
+
+    // vertResidLoop start
+label vertResidLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, srcPtr, 0
+    vld64w              source1, srcPtr, 8
+    vld64w              source2, srcPtr, 16
+    vld64w              source3, srcPtr, 24
+
+    // store prediction (8 bits per pixel)
+    vst128              vertPred8, predPtr, 0
+    vst128              vertPred8, predPtr, 16
+
+    // generate residual (9 bits stored in 16 bits per pixel)
+    vsubw               residual0, source0, vertPred16Lo
+    vsubw               residual1, source1, vertPred16Hi
+    vsubw               residual2, source2, vertPred16Lo
+    vsubw               residual3, source3, vertPred16Hi
+
+    // store residual (16 bits per pixel)
+    vst128              residual0, resPtr, 0
+    vst128              residual1, resPtr, 16
+    vst128              residual2, resPtr, 32
+    vst128              residual3, resPtr, 48
+
+    // decrement and loop
+    vjd.row             row, .vertResidLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 srcPtr, srcPtr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 predPtr, predPtr, 16*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 resPtr, resPtr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+    // jump to end
+    vjp                 .exit
+
+    // delay slots start
+
+    // scale final cost for comparison against inter
+~   vaddw               'intraLumaCost, 'intraLumaCost, lambdaMult10_30
+
+    // save mode
+~   vst8                'intra_16x16_mode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+
+    // save cost
+~   vst16               'intraLumaCost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+    // delay slots end
+
+
+    // horizontal prediction choosen
+label horizontalResult
+
+    // all arguments have already been set up in the delay slots of the best cost decision
+
+    // horizResidLoop start
+label horizResidLoop
+
+    // load 8 bit predictions into 16 bit lanes
+    vld8w               'horizPred16Lo_Term0, horizPtr, 0 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term0, horizPtr, 1 * PCB_RECONSTRUCTED_STRIDE
+
+    // load current (8 bits per pixel)
+    vld64w              source0, srcPtr, 0
+    vld64w              source1, srcPtr, 8
+    vld64w              source2, srcPtr, 16
+    vld64w              source3, srcPtr, 24
+
+    // duplicate horizontal prediction into all vector lanes
+    vxsumw.0xff         horizPred16Lo, horizPred16Lo_Term0, {horizPred16Lo_Term0}
+    vxsumw.0xff         horizPred16Hi, horizPred16Hi_Term0, {horizPred16Hi_Term0}
+
+    // generate residual (9 bits stored in 16 bits per pixel)
+    vsubw               residual0, source0, horizPred16Lo
+    vsubw               residual1, source1, horizPred16Lo
+    vsubw               residual2, source2, horizPred16Hi
+    vsubw               residual3, source3, horizPred16Hi
+
+    // duplicate 8bit horizontal prediction into both bytes of the 16 bit lanes
+    vmulw               horizPred16Lo, horizPred16Lo, 0x0101
+    vmulw               horizPred16Hi, horizPred16Hi, 0x0101
+
+    // store residual (16 bits per pixel)
+    vst128              residual0, resPtr, 0
+    vst128              residual1, resPtr, 16
+    vst128              residual2, resPtr, 32
+    vst128              residual3, resPtr, 48
+
+    // store prediction (8 bits per pixel)
+    vst128              horizPred16Lo, predPtr, 0
+    vst128              horizPred16Hi, predPtr, 16
+
+    // increament pointers
+    vim                 horizPtr, horizPtr, PCB_RECONSTRUCTED_STRIDE*2 // 2 rows
+
+    // decrement and loop
+    vjd.row             row, .horizResidLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 srcPtr, srcPtr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 predPtr, predPtr, 16*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 resPtr, resPtr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+    // scale final cost for comparison against inter
+    vaddw               'intraLumaCost, 'intraLumaCost, lambdaMult10_30
+
+    // save mode
+    vst8                'intra_16x16_mode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+
+    // save cost
+    vst16               'intraLumaCost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+
+label exit
+
+end // 2
+
+end // 1
+
+endfunc // GenerateIntra16x16PredictionFastAll
+
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntra16x16PredictionFastDC
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f GenerateIntra16x16PredictionFastDC
+    // function arguments
+    // intraValidFlag = i0
+
+begin //1
+    p16                 aboveOk
+    p16                 leftOk
+
+    p16                 quantValue
+    p16                 lambdaLutPtr
+    p16                 lambdaMult10_30
+
+    p16                 predPtr
+    p16                 srcPtr
+    p16                 resPtr
+
+    p16                 row
+
+
+    vec16               vertPred16Lo <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+    vec16               vertPred16Hi <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+
+    vec16               horizPred16Lo <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+    vec16               horizPred16Hi <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+
+    vec16               dcPred8
+    vec16               dcPred16
+
+    vec16               intraValidFlagVec
+
+    vec16               dcSad
+    vec16               dcTemp
+
+    vec16               source0
+    vec16               source1
+    vec16               source2
+    vec16               source3
+
+    vec16               residual0
+    vec16               residual1
+    vec16               residual2
+    vec16               residual3
+
+
+    // get quantiser value
+    vld8w               'quantValue, CirBuf, MPO_QuantValue
+
+    // broadcast intraValidFlag across all lanes
+    vmivw               intraValidFlagVec, intraValidFlag
+
+    // zero dc_prediction, as it's formed by accumulation
+    vmovw               dcPred16, 0
+
+    // check if above is valid
+    via                 aboveOk, intraValidFlag, 2
+
+    // setup global value pointers
+    vim                 lambdaLutPtr, quantValue, SDMOF_h264_encoder_rd_sad_lambda
+
+    // check if left is valid
+    via                 leftOk, intraValidFlag, 1
+
+    // setup global lambda value
+    vld8w               'lambdaMult10_30, lambdaLutPtr, 0
+
+    // reset dc sad
+    vmovw               dcSad, 0
+
+    // if above or left is valid then set corresponding lane to 0xffff
+    vnew                'aboveOk'leftOk, 'aboveOk'leftOk, VZERO
+
+    // we do a final adjust of the cost by adding 10 times lambda
+    vmulw               'lambdaMult10_30, 'lambdaMult10_30, 10
+
+
+    // setup source pointer for horizontal
+    vim.leftOk          predPtr, CirLeft, MPO_PixelCoeffBuffer + PCB_RECONSTRUCTED_Y + PCB_RECONSTRUCTED_STRIDE*4 + PCB_RECONSTRUCTED_STRIDE-1
+
+
+    // vertical prediction (mode = 0)
+label verticalPrediction
+
+    // check if above is valid
+    vjp!aboveOk         .horizontalPrediction
+
+    // delay slots start
+
+    // get intra prediction pixels for A
+~   vld64w.aboveOk      vertPred16Lo, FixBuf, MPO_Y_IntraPredPixel + 0
+~   vld64w.aboveOk      vertPred16Hi, FixBuf, MPO_Y_IntraPredPixel + 8
+
+~   vnop
+    // delay slots end
+    
+
+    // following can't be in delay slots
+    // accumulate intra prediction pixels A into dc prediction vector
+    vaddw               dcPred16, vertPred16Lo, vertPred16Hi
+
+
+    // horizontal prediction (mode = 1)
+label horizontalPrediction
+
+    // check if left is valid
+    vjp!leftOk          .dcPrediction
+
+    // delay slots start
+
+    // load 8 bit predictions
+~   vld8w.leftOk        'horizPred16Lo_Term0, predPtr, 0 * PCB_RECONSTRUCTED_STRIDE
+~   vld8w.leftOk        'horizPred16Lo_Term1, predPtr, 1 * PCB_RECONSTRUCTED_STRIDE
+~   vld8w.leftOk        'horizPred16Lo_Term2, predPtr, 2 * PCB_RECONSTRUCTED_STRIDE
+
+    // delay slots end
+
+
+    vld8w               'horizPred16Lo_Term3, predPtr, 3 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term4, predPtr, 4 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term5, predPtr, 5 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term6, predPtr, 6 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Lo_Term7, predPtr, 7 * PCB_RECONSTRUCTED_STRIDE
+
+    vld8w               'horizPred16Hi_Term0, predPtr, 8 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term1, predPtr, 9 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term2, predPtr, 10 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term3, predPtr, 11 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term4, predPtr, 12 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term5, predPtr, 13 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term6, predPtr, 14 * PCB_RECONSTRUCTED_STRIDE
+    vld8w               'horizPred16Hi_Term7, predPtr, 15 * PCB_RECONSTRUCTED_STRIDE
+
+    // accumulate intra prediction pixel
+    vaddw               VZERO, horizPred16Lo, horizPred16Hi
+
+    // accumulate prediction into dc prediction vector
+    vaddaw               dcPred16, dcPred16, VZERO
+
+
+    // dc prediction (mode = 2)
+label dcPrediction
+
+    // compare intraValidFlag to see if neither above and left are available and
+    // broadcast flag across all lanes
+    vsubw.0xff.f        VZERO, intraValidFlagVec, 0
+
+    // clear the sticky flags
+    vclrstk.0xff.al
+
+    // set the sticky flags if both above and left are available
+    vseqw.0xff          intraValidFlagVec, 3
+
+    // setup source value
+    // if neither above or left are available then use default of 128
+@   mov                 r0, 0x0080
+    vmovw.0xff.eq       dcPred16, r0
+
+    // sum all lanes of dc_prediction vector and broadcast across whole vector
+    vxsumw.0xff.ne      dcPred16, dcPred16, 0xff
+
+    // if both above and left are available then add rounding of 16 and divide by 32
+    vasrrw.0xff.ne.s    dcPred16, dcPred16, 5
+    
+    // if only one of above or left are available then add rounding of 8 and divide by 16
+    vasrrw.0xff.ne!s    dcPred16, dcPred16, 4
+
+    // duplicate prediction into both bytes of the 16 bit lanes to for the 8 bit version
+    vmulw.0xff          dcPred8, dcPred16, 0x0101
+
+
+    // calculate sads
+
+    // setup loop counter
+    // 16 rows total, 2 rows per loop
+    vmovw               'row, (16/2)-1
+
+    // set mode to dc
+    vmovw               'intra_16x16_mode, MBIM_H264_Y_DC
+
+    // setup source pointer for residual generation
+    vim                 srcPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y
+
+    // setup prediction pointer for residual generation
+    vmovw               'predPtr, SDMOF_IntraPredictionLuma + MBIM_H264_Y_DC * (16*16) // 1 byte per pixel
+
+    // setup residual pointer for residual generation
+    vmovw               'resPtr, SDMOF_IntraPredictionResidsLuma + MBIM_H264_Y_DC * (16*16*2) // 2 bytes per pixel
+
+
+    // dcSadResidLoop start
+label dcSadResidLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, srcPtr, 0
+    vld64w              source1, srcPtr, 8
+    vld64w              source2, srcPtr, 16
+    vld64w              source3, srcPtr, 24
+
+    // store prediction (8 bits per pixel)
+    vst128              dcPred8, predPtr, 0
+    vst128              dcPred8, predPtr, 16
+
+    // generate residual (9 bits stored in 16 bits per pixel)
+    vsubw               residual0, source0, dcPred16
+    vsubw               residual1, source1, dcPred16
+    vsubw               residual2, source2, dcPred16
+    vsubw               residual3, source3, dcPred16
+
+    // get absolute value and accumulate
+    vabsw               VZERO, residual0
+    vabsaw              VZERO, residual1
+    vabsaw              VZERO, residual2
+    vabsaw              dcTemp, residual3
+
+    // store residual (16 bits per pixel)
+    vst128              residual0, resPtr, 0
+    vst128              residual1, resPtr, 16
+    vst128              residual2, resPtr, 32
+    vst128              residual3, resPtr, 48
+
+    // sum temporary accumulated sad into total sad
+    vaddw               dcSad, dcSad, dcTemp
+
+    // decrement and loop
+    vjd.row             row, .dcSadResidLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 srcPtr, srcPtr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 predPtr, predPtr, 16*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 resPtr, resPtr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+    // sum across all lanes of the sads back into all the lanes, so that compare will set flags across all lanes
+    vxsumw.0xff         dcSad, dcSad, 0xff
+
+    // scale final cost for comparison against inter
+    vaddw.{intraLumaCost} 'intraLumaCost, dcSad, lambdaMult10_30
+
+    // save mode
+    vst8                'intra_16x16_mode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+
+    // save cost
+    vst16               'intraLumaCost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+end // 1
+
+endfunc // GenerateIntra16x16PredictionFastDC
+
+
+//------------------------------------------------------------------------------
+// Name:          GenerateIntra16x16PredictionFastVertical
+// Purpose:       
+// Arguments:     
+// Return Value:  void
+//------------------------------------------------------------------------------
+func.f GenerateIntra16x16PredictionFastVertical
+    // function arguments
+    // intraValidFlag = i0
+
+begin //1
+    p16                 aboveOk
+
+    p16                 quantValue
+    p16                 lambdaLutPtr
+    p16                 lambdaMult10_30
+
+    p16                 predPtr
+    p16                 srcPtr
+    p16                 resPtr
+
+    p16                 row
+
+    vec16               vertPred8
+    vec16               vertPred16Lo <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+    vec16               vertPred16Hi <Term0, Term1, Term2, Term3, Term4, Term5, Term6, Term7>
+
+    vec16               intraValidFlagVec
+
+    vec16               vertSad
+    vec16               vertTemp
+
+    vec16               source0
+    vec16               source1
+    vec16               source2
+    vec16               source3
+
+    vec16               residual0
+    vec16               residual1
+    vec16               residual2
+    vec16               residual3
+
+
+    // check if above is valid
+    via                 aboveOk, intraValidFlag, 2
+
+    // set final cost to max value
+@   mov                 r0, 0x7fff
+    vmovw               'intraLumaCost, r0
+
+    // vertical prediction (mode = 0)
+label verticalPrediction
+
+    // check if above is valid
+    vjp!aboveOk         .GenerateIntra16x16PredictionFastDC
+
+    // delay slots start
+
+    // get quantiser value
+~   vld8w               'quantValue, CirBuf, MPO_QuantValue
+
+    // if above or left is valid then set corresponding lane to 0xffff
+~   vnew                'aboveOk, 'aboveOk, VZERO
+
+    // broadcast intraValidFlag across all lanes
+~   vmivw               intraValidFlagVec, intraValidFlag
+
+    // delay slots end
+    
+
+    // setup global value pointers
+    vim                 lambdaLutPtr, quantValue, SDMOF_h264_encoder_rd_sad_lambda
+
+    // reset sad
+    vmovw               vertSad, 0
+
+    // setup global lambda value
+    vld8w               'lambdaMult10_30, lambdaLutPtr, 0
+
+
+    // get intra prediction pixels for A
+    vld64w              vertPred16Lo, FixBuf, MPO_Y_IntraPredPixel + 0
+    vld64w              vertPred16Hi, FixBuf, MPO_Y_IntraPredPixel + 8
+    vld128              vertPred8, FixBuf, MPO_Y_IntraPredPixel + 0
+
+    // we do a final adjust of the cost by adding 10 times lambda
+    vmulw               'lambdaMult10_30, 'lambdaMult10_30, 10
+
+
+    // calculate sads
+
+    // setup loop counter
+    // 16 rows total, 2 rows per loop
+    vmovw               'row, (16/2)-1
+
+    // set mode to vertical
+    vmovw               'intra_16x16_mode, MBIM_H264_Y_VERTICAL
+
+    // setup source pointer for residual generation
+    vim                 srcPtr, CirBuf, MPO_PixelCoeffBuffer + PCB_CURRENT_Y
+
+    // setup prediction pointer for residual generation
+    vmovw               'predPtr, SDMOF_IntraPredictionLuma + MBIM_H264_Y_VERTICAL * (16*16) // 1 byte per pixel
+
+    // setup residual pointer for residual generation
+    vmovw               'resPtr, SDMOF_IntraPredictionResidsLuma + MBIM_H264_Y_VERTICAL * (16*16*2) // 2 bytes per pixel
+
+
+    // vertSadResidLoop start
+label vertSadResidLoop
+
+    // load current (8 bits per pixel)
+    vld64w              source0, srcPtr, 0
+    vld64w              source1, srcPtr, 8
+    vld64w              source2, srcPtr, 16
+    vld64w              source3, srcPtr, 24
+
+    // store prediction (8 bits per pixel)
+    vst128              vertPred8, predPtr, 0
+    vst128              vertPred8, predPtr, 16
+
+    // generate residual (9 bits stored in 16 bits per pixel)
+    vsubw               residual0, source0, vertPred16Lo
+    vsubw               residual1, source1, vertPred16Hi
+    vsubw               residual2, source2, vertPred16Lo
+    vsubw               residual3, source3, vertPred16Hi
+
+    // get absolute value and accumulate
+    vabsw               VZERO, residual0
+    vabsaw              VZERO, residual1
+    vabsaw              VZERO, residual2
+    vabsaw              vertTemp, residual3
+
+    // store residual (16 bits per pixel)
+    vst128              residual0, resPtr, 0
+    vst128              residual1, resPtr, 16
+    vst128              residual2, resPtr, 32
+    vst128              residual3, resPtr, 48
+
+    // sum temporary accumulated sad into total sad
+    vaddw               vertSad, vertSad, vertTemp
+
+    // decrement and loop
+    vjd.row             row, .vertSadResidLoop
+
+    // delay slots start
+
+    // increament pointers
+~   vim                 srcPtr, srcPtr, PCB_CURRENT_STRIDE*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 predPtr, predPtr, 16*2 // 16 pixels, 1 byte per pixel, 2 rows
+~   vim                 resPtr, resPtr, 16*2*2 // 16 pixels, 2 bytes per pixel, 2 rows
+
+    // delay slots end
+
+
+    // sum across all lanes of the sads back into all the lanes, so that compare will set flags across all lanes
+    vxsumw.0xff         vertSad, vertSad, 0xff
+
+    // scale final cost for comparison against inter
+    vaddw.{intraLumaCost} 'intraLumaCost, vertSad, lambdaMult10_30
+
+    // save mode
+    vst8                'intra_16x16_mode, CirBuf, MPO_WorkArea_BestIntraLumaMode
+
+    // save cost
+    vst16               'intraLumaCost, CirBuf, MPO_WorkArea_BestIntraLumaCost
+
+end // 1
+
+endfunc // GenerateIntra16x16PredictionFastVertical

@@ -1,0 +1,3 @@
+m400_gp_F200_plbu_config_reg_reset_check_0_b.o: \
+ m400_gp_F200_plbu_config_reg_reset_check_0_b.c \
+ m400_gp_F200_plbu_config_reg_reset_check_0_b.h

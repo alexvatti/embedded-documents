@@ -1,0 +1,3 @@
+halAudioClock.c:22:6:halAudioClock_N	16	static
+halAudioClock.c:36:6:halAudioClock_Cts	16	static
+halAudioClock.c:47:6:halAudioClock_F	16	static

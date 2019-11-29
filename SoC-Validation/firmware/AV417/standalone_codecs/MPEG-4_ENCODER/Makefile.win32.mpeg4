@@ -1,0 +1,804 @@
+##################################################################################
+#
+# Auto-generated Makefile, by buildmake
+#
+##################################################################################
+
+#########################################################
+# Declare all required build variables
+#########################################################
+
+DELETE= del
+
+#options
+
+# Optimised release build
+export RELEASE=true
+# Debug build (recommend disabling RELEASE if this is used)
+export DEBUG=false
+# Enable data cache
+export ENABLE_DCACHE=true
+# Build test harness so it dumps reconstructed YUVs during encoding. Warning - slow.
+export ENABLE_DEBUG_OUTPUT=false
+# Enable generation of encoding stats. Warning - slow.
+export ENABLE_STATISTICS=false
+# Enable access to stdout and stderr.
+export ENABLE_HAVE_STDIO=true
+
+# Enable Vraptor hardware support. Always true
+export ENABLE_VRAPTOR=true
+# Enable dynmaic encoding alogrithm. Always true.
+export ENABLE_DYNAMIC_ENCODING=true
+
+#tools setup
+
+BASEDIR=.
+ENCDIR=ARCEncoder
+APPDIR=ARC_MPEG4_API
+LIBDIR=lib
+APIDIR=ARC_API_Base
+
+INCLUDES= -I.\ARC_API_Base -I.\ARC_MPEG4_API -I.\${ENCDIR} -I.\${ENCDIR}\MPEG4 -I.\${ENCDIR}\ARC
+OPT_FLAGS=-DMPEG4BUILD 
+ifeq (${RELEASE},true)
+OPT_FLAGS+=-O6 -DNDEBUG
+endif
+ifeq (${DEBUG},true)
+OPT_FLAGS+=-g
+endif
+ifeq (${ENABLE_DCACHE},true)
+OPT_FLAGS+= -DCACHE_CONTROL
+endif
+ifeq (${ENABLE_VRAPTOR},true)
+OPT_FLAGS+= -DHARDWARE_EE -DHARDWARE_ME -DHARDWARE_SIMD -Xvraptor
+endif
+ifeq (${ENABLE_DEBUG_OUTPUT},true)
+OPT_FLAGS+= -DOUTPUT_DEBUG_INFO
+endif
+ifeq (${ENABLE_DYNAMIC_ENCODING},true)
+OPT_FLAGS+= -DHARDWARE_TIMER
+endif
+ifeq (${ENABLE_STATISTICS},true)
+OPT_FLAGS+= -DSTATISTICS
+endif
+ifeq (${ENABLE_HAVE_STDIO},true)
+OPT_FLAGS+= -DHAVE_STDIO
+endif
+export OPT_FLAGS
+
+MCC_PATH=
+MCC_CC=${MCC_PATH}hcac
+MCC_CC_FLAGS=-g -Hhostlib= -DD_UNIX -DUNIX -DNDEBUG -DARC_ENCODER_API -D_no_GENERATE_PROFILING_REPORT -DnoNO_PIXEL_OPERATION -D__ARC__ -D__ARC_ -arc700 -Hi -Hon=Long_enums -Xlib -Xnorm -Xswap -Xmpy  -Hon=Bool -w0 -Hsdata0  -Hinlfactor=900 -Hinlsize=260 -DMODEL_PC_VERSION
+MCC_LD=${MCC_PATH}hcac
+#MCC_LD_FLAGS=-Hnocrt -arc700 -Hhlsize=32768
+MCC_LD_FLAGS=-g -arc700 -Hhostlib=  
+MCC_AR=${MCC_PATH}arac
+MCC_AR_FLAGS=-cru 
+MCC_DEP=${MCC_PATH}hcac
+MCC_DEP_FLAGS=-Hsilent -Hrel -Hmake
+
+SCANMP_PATH=
+SCANMP_EXE=${SCANMP_PATH}ScanMP
+SCANMP_FLAGS=
+
+LIBS = 
+
+#New build rules
+
+%.cpp : %.sss
+	${SCANMP_EXE} ${SCANMP_FLAGS} $<
+
+#Individual file build rules
+
+
+#Preprocessor targets
+
+SCANMP_DEPS= .\${ENCDIR}\ARC\ArcChannel_MPA.cpp .\${ENCDIR}\ARC\ArcChannel_MPA.h .\${ENCDIR}\MPEG4\ArcMp4IntraLumaPrediction_MPA.cpp .\${ENCDIR}\MPEG4\ArcMp4IntraLumaPrediction_MPA.h .\${ENCDIR}\MPEG4\ArcMP4ChromaFilter_MPA.cpp .\${ENCDIR}\MPEG4\ArcMP4ChromaFilter_MPA.h .\${ENCDIR}\MPEG4\ArcH263DeQuant_MPA.cpp .\${ENCDIR}\MPEG4\ArcH263DeQuant_MPA.h .\${ENCDIR}\MPEG4\ArcFDCT_MPA.cpp .\${ENCDIR}\MPEG4\ArcFDCT_MPA.h .\${ENCDIR}\MPEG4\ArcEncoderMain_MPA.cpp .\${ENCDIR}\MPEG4\ArcEncoderMain_MPA.h .\${ENCDIR}\MPEG4\ArcEncoderAddSubtract_MPA.cpp .\${ENCDIR}\MPEG4\ArcEncoderAddSubtract_MPA.h .\${ENCDIR}\MPEG4\ArcSDMTables_MPA.cpp .\${ENCDIR}\MPEG4\ArcSDMTables_MPA.h .\${ENCDIR}\MPEG4\ArcMP4DeQuant_MPA.cpp .\${ENCDIR}\MPEG4\ArcMP4DeQuant_MPA.h .\${ENCDIR}\MPEG4\ArcIDCT_MPA.cpp .\${ENCDIR}\MPEG4\ArcIDCT_MPA.h .\${ENCDIR}\ARC\ArcSoftwareME_MPA.cpp .\${ENCDIR}\ARC\ArcSoftwareME_MPA.h .\${ENCDIR}\ARC\ArcSoftwareSubME_MPA.cpp .\${ENCDIR}\ARC\ArcSoftwareSubME_MPA.h .\${ENCDIR}\ARC\ArcLumaMP4SubPelFilter_MPA.cpp .\${ENCDIR}\ARC\ArcLumaMP4SubPelFilter_MPA.h
+
+APPOBJS=${APPDIR}\obj\ARC_ROM_VECTORS.o ${APPDIR}\obj\serial_pl01x.o ${APPDIR}\obj\mpeg4_encoder_app.o
+#APPOBJS=${APPDIR}\obj\serial_plo1x.o
+#APPOBJS=${APPDIR}\obj\mpeg4_encoder_app.o
+
+LIBOBJS=${APPDIR}\obj\ArcSoftwareME.o ${APPDIR}\obj\ArcSoftwareME_MPA.o ${APPDIR}\obj\ArcSoftwareSubME_MPA.o ${APPDIR}\obj\ArcLumaMP4SubPelFilter_MPA.o ${APPDIR}\obj\ArcChannel_MPA.o ${APPDIR}\obj\ArcChannel.o ${APPDIR}\obj\ArcMPC.o ${APPDIR}\obj\ArcMacroRecordSettings.o ${APPDIR}\obj\ArcEntropyEncoderModel.o ${APPDIR}\obj\ArcMotionEstimationModel.o ${APPDIR}\obj\VRaptorInfo.o ${APPDIR}\obj\ArcEETables.o ${APPDIR}\obj\ArcFrameBuffers.o ${APPDIR}\obj\ArcMP4ChannelPrediction.o ${APPDIR}\obj\BTPicture.o ${APPDIR}\obj\ArcMP4ChannelMotionEstimation.o ${APPDIR}\obj\MP4Vlc.o ${APPDIR}\obj\MP4IntraModeSelection.o ${APPDIR}\obj\MP4EncoderStatistics.o ${APPDIR}\obj\MP4RateControl.o ${APPDIR}\obj\SymbolByteBuffer.o ${APPDIR}\obj\ArcMP4SDMTables.o ${APPDIR}\obj\MP4EncoderTables.o ${APPDIR}\obj\ArcMP4ChannelEntropyEncoder.o ${APPDIR}\obj\MP4EncoderControl.o ${APPDIR}\obj\MP4OffsetTables.o ${APPDIR}\obj\CMP4Encoder.o ${APPDIR}\obj\MP4EncoderMain.o ${APPDIR}\obj\MP4EncodedPictureBuffer.o ${APPDIR}\obj\picture_encoder.o ${APPDIR}\obj\MP4MakeInterPrediction.o ${APPDIR}\obj\MP4MotionEstimation.o ${APPDIR}\obj\MP4Tables.o ${APPDIR}\obj\mpeg4_interface.o ${APIDIR}\obj\arc_encoder.o ${APIDIR}\obj\arc_enc_utils.o ${APIDIR}\obj\management_if.o ${APIDIR}\obj\standalone_support.o ${APIDIR}\obj\packet_queue.o
+
+#All preprocessed files
+ALLPREPROC=${SCANMP_DEPS} 
+
+
+ifeq (${ENABLE_VRAPTOR},true)
+LIBOBJS+=${APPDIR}\obj\ArcSoftwareSubME_MPA.o ${APPDIR}\obj\ArcSoftwareME_MPA.o ${APPDIR}\obj\ArcChannel_MPA.o ${APPDIR}\obj\ArcEncoderAddSubtract_MPA.o ${APPDIR}\obj\ArcEncoderMain_MPA.o ${APPDIR}\obj\ArcFDCT_MPA.o ${APPDIR}\obj\ArcH263DeQuant_MPA.o ${APPDIR}\obj\ArcIDCT_MPA.o ${APPDIR}\obj\ArcMP4ChromaFilter_MPA.o ${APPDIR}\obj\ArcMP4DeQuant_MPA.o ${APPDIR}\obj\ArcSDMTables_MPA.o ${APPDIR}\obj\ArcMp4IntraLumaPrediction_MPA.o
+endif
+
+DIRS=.\ARC_API_Base\obj .\ARCEncoder\obj .\ARC_MPEG4_API\obj .\lib
+#########################################################
+# Standard build targets
+#########################################################
+
+# default build
+
+default: all
+
+all: dep bin
+
+#dependencies
+
+dep: ${DIRS} ${ALLPREPROC}
+
+# clean builds
+
+libdepclean:
+	${DELETE} ${LIBOBJS} ${LIBDIR}\libmpeg4_encoder_app.a
+
+clean:
+	${DELETE} ${APPOBJS}
+
+libclean:
+	${DELETE} ${LIBOBJS} ${LIBDIR}\libmpeg4_encoder_app.a ${ALLPREPROC}
+
+
+
+#Generate a library of all files
+
+library: ${LIBDIR}\libmpeg4_encoder_app.a
+${LIBDIR}\libmpeg4_encoder_app.a: ${ALLPREPROC} ${LIBOBJS}
+	${MCC_AR} ${MCC_AR_FLAGS} ${LIBDIR}\libmpeg4_encoder_app.a ${LIBOBJS}
+
+#Generate the executable
+
+all: bin
+bin: mpeg4_encoder_app
+mpeg4_encoder_app: ${APPOBJS} ${LIBDIR}\libmpeg4_encoder_app.a 
+	${MCC_LD} ${MCC_LD_FLAGS} -e _reset mpeg4.cmd -Hldopt=-Csections -Hldopt=-Coutput=mpeg4.map -Hhlsize=32768 ${APPOBJS} ${LIBDIR}\libmpeg4_encoder_app.a  ${LIBS} -o mpeg4_encoder_app
+
+
+#########################################################
+# Create the required directories
+#########################################################
+.\ARC_API_Base\obj :
+	mkdir $@
+
+.\ARCEncoder\obj :
+	mkdir $@
+
+.\ARC_MPEG4_API\obj : 
+	mkdir $@
+
+.\lib :
+	mkdir $@
+
+#########################################################
+# Individual file build control for library files
+#########################################################
+
+
+${APPDIR}\obj\ArcSoftwareME.o:	.\ARCEncoder\ARC\ArcSoftwareME.cpp \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EncoderControl.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcSoftwareME.cpp -o $@
+
+${APPDIR}\obj\ArcChannel.o:	.\ARCEncoder\ARC\ArcChannel.cpp \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcChannel.cpp -o $@
+
+${APPDIR}\obj\ArcMPC.o:	.\ARCEncoder\ARC\ArcMPC.cpp \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcMPC.cpp -o $@
+
+${APPDIR}\obj\ArcMacroRecordSettings.o:	\
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.cpp \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h \
+	.\ARCEncoder\ARC\typdef.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcMacroRecordSettings.cpp -o $@
+
+${APPDIR}\obj\ArcEntropyEncoderModel.o:	\
+	.\ARCEncoder\ARC\ArcEntropyEncoderModel.cpp 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcEntropyEncoderModel.cpp -o $@
+
+${APPDIR}\obj\ArcMotionEstimationModel.o:	\
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.cpp 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcMotionEstimationModel.cpp -o $@
+
+${APPDIR}\obj\VRaptorInfo.o:	.\ARCEncoder\ARC\VRaptorInfo.cpp \
+	.\ARCEncoder\ARC\VRaptorInfo.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\VRaptorInfo.cpp -o $@
+
+${APPDIR}\obj\ArcEETables.o:	.\ARCEncoder\ARC\ArcEETables.cpp \
+	.\ARCEncoder\ARC\ArcEEtables.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcEETables.cpp -o $@
+
+${APPDIR}\obj\ArcFrameBuffers.o:	.\ARCEncoder\ARC\ArcFrameBuffers.cpp \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h \
+	.\ARCEncoder\ARC\defines.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcFrameBuffers.cpp -o $@
+
+${APPDIR}\obj\ArcMP4ChannelPrediction.o:	\
+	.\ARCEncoder\MPEG4\ArcMP4ChannelPrediction.cpp \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\VRaptorInfo.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\defines.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\ArcMP4ChannelPrediction.cpp -o $@
+
+${APPDIR}\obj\BTPicture.o:	.\ARCEncoder\MPEG4\BTPicture.cpp \
+	.\ARCEncoder\MPEG4\BTPicture.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\BTPicture.cpp -o $@
+
+${APPDIR}\obj\ArcMP4ChannelMotionEstimation.o:	\
+	.\ARCEncoder\MPEG4\ArcMP4ChannelMotionEstimation.cpp \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\MP4EncoderTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\ARC\VRaptorInfo.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h \
+	.\ARCEncoder\MPEG4\ArcMp4IntraLumaPrediction_MPA.h \
+	.\ARCEncoder\ARC\ArcChannel_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderAddSubtract_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\ArcMP4ChannelMotionEstimation.cpp -o $@
+
+${APPDIR}\obj\MP4Vlc.o:	.\ARCEncoder\MPEG4\MP4Vlc.cpp \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\SymbolByteBuffer.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\ARC\ArcEntropyEncoderModel.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4Vlc.cpp -o $@
+
+${APPDIR}\obj\MP4IntraModeSelection.o:	\
+	.\ARCEncoder\MPEG4\MP4IntraModeSelection.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\MP4EncoderTables.h \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\MPEG4\MP4Transform.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\MPEG4\mpeg4data.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4IntraModeSelection.cpp -o $@
+
+${APPDIR}\obj\MP4EncoderStatistics.o:	\
+	.\ARCEncoder\MPEG4\MP4EncoderStatistics.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4EncoderStatistics.cpp -o $@
+
+${APPDIR}\obj\MP4RateControl.o:	.\ARCEncoder\MPEG4\MP4RateControl.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4RateControl.cpp -o $@
+
+${APPDIR}\obj\SymbolByteBuffer.o:	.\ARCEncoder\MPEG4\SymbolByteBuffer.cpp \
+	.\ARCEncoder\MPEG4\SymbolByteBuffer.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\arc_encoder_malloc.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\SymbolByteBuffer.cpp -o $@
+
+
+${APPDIR}\obj\ArcMP4SDMTables.o:	.\ARCEncoder\MPEG4\ArcMP4SDMTables.cpp \
+	.\ARCEncoder\ARC\defines.h .\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\ArcEEtables.h \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h \
+	.\ARCEncoder\ARC\VRaptorInfo.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\ArcMP4SDMTables.cpp -o $@
+
+
+${APPDIR}\obj\MP4EncoderTables.o:	.\ARCEncoder\MPEG4\MP4EncoderTables.cpp \
+	.\ARCEncoder\MPEG4\MP4EncoderTables.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\EnumTypes.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4EncoderTables.cpp -o $@
+
+${APPDIR}\obj\ArcMP4ChannelEntropyEncoder.o:	\
+	.\ARCEncoder\MPEG4\ArcMP4ChannelEntropyEncoder.cpp \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\VRaptorInfo.h \
+	.\ARCEncoder\MPEG4\SymbolByteBuffer.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\ARC\ArcEntropyEncoderModel.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\ArcMP4ChannelEntropyEncoder.cpp -o $@
+
+${APPDIR}\obj\MP4EncoderControl.o:	.\ARCEncoder\MPEG4\MP4EncoderControl.cpp \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4EncoderControl.cpp -o $@
+
+${APPDIR}\obj\MP4OffsetTables.o:	.\ARCEncoder\MPEG4\MP4OffsetTables.cpp \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h \
+	.\ARCEncoder\ARC\EnumTypes.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4OffsetTables.cpp -o $@
+
+${APPDIR}\obj\CMP4Encoder.o:	.\ARCEncoder\MPEG4\CMP4Encoder.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\SymbolByteBuffer.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\MPEG4\MP4EncoderTables.h \
+	.\ARCEncoder\ARC\ArcEntropyEncoderModel.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\CMP4Encoder.cpp -o $@
+
+${APPDIR}\obj\MP4EncoderMain.o:	.\ARCEncoder\MPEG4\MP4EncoderMain.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\SymbolByteBuffer.h \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\MPEG4\MP4Transform.h \
+	.\ARCEncoder\MPEG4\MP4EncoderTables.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h \
+	.\ARCEncoder\MPEG4\ArcFDCT_MPA.h \
+	.\ARCEncoder\MPEG4\ArcIDCT_MPA.h \
+	.\ARCEncoder\MPEG4\ArcMP4DeQuant_MPA.h \
+	.\ARCEncoder\MPEG4\ArcH263DeQuant_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderAddSubtract_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4EncoderMain.cpp -o $@
+
+${APPDIR}\obj\MP4EncodedPictureBuffer.o:	\
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.cpp \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h .\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4EncodedPictureBuffer.cpp -o $@
+
+${APPDIR}\obj\picture_encoder.o:	.\ARCEncoder\MPEG4\picture_encoder.cpp \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\picture_encoder.cpp -o $@
+
+${APPDIR}\obj\MP4MakeInterPrediction.o:	\
+	.\ARCEncoder\MPEG4\MP4MakeInterPrediction.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\ARC\ArcEEOffsetTables.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h \
+	.\ARCEncoder\MPEG4\ArcMP4ChromaFilter_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4MakeInterPrediction.cpp -o $@
+
+${APPDIR}\obj\MP4MotionEstimation.o:	\
+	.\ARCEncoder\MPEG4\MP4MotionEstimation.cpp \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\MP4EncoderTables.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderAddSubtract_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4MotionEstimation.cpp -o $@
+
+${APPDIR}\obj\MP4Tables.o:	.\ARCEncoder\MPEG4\MP4Tables.cpp \
+	.\ARCEncoder\MPEG4\MP4Tables.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\EnumTypes.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\MPEG4\MP4Tables.cpp -o $@
+
+${APPDIR}\obj\mpeg4_interface.o:	ARC_MPEG4_API\mpeg4_interface.cpp \
+	.\ARC_MPEG4_API\mpeg4_interface.h \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\MPEG4\BTPicture.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\ARC\typdef.h .\ARCEncoder\ARC\ArcMPC.h \
+	.\ARCEncoder\MPEG4\CMP4Encoder.h \
+	.\ARCEncoder\MPEG4\picture_encoder.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\MPEG4\MP4EncoderControl.h \
+	.\ARCEncoder\MPEG4\MP4EncodedPictureBuffer.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\VRaptorInfo.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h \
+	.\ARCEncoder\MPEG4\ArcEncoderAddSubtract_MPA.h \
+	.\ARCEncoder\MPEG4\ArcMP4ChromaFilter_MPA.h \
+	.\ARCEncoder\MPEG4\ArcFDCT_MPA.h \
+	.\ARCEncoder\MPEG4\ArcIDCT_MPA.h \
+	.\ARCEncoder\MPEG4\ArcMP4DeQuant_MPA.h \
+	.\ARCEncoder\MPEG4\ArcH263DeQuant_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}\mpeg4_interface.cpp -o $@
+
+${APIDIR}\obj\arc_encoder.o:	ARC_API_Base\arc_encoder.c \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h \
+	.\ARC_API_Base\standalone_support.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APIDIR}\arc_encoder.c -o $@
+
+${APIDIR}\obj\arc_enc_utils.o:	ARC_API_Base\arc_enc_utils.c \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APIDIR}\arc_enc_utils.c -o $@
+
+${APIDIR}\obj\management_if.o:	ARC_API_Base\management_if.c \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APIDIR}\management_if.c -o $@
+
+${APIDIR}\obj\standalone_support.o:	ARC_API_Base\standalone_support.c \
+	.\ARC_API_Base\standalone_support.h \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APIDIR}\standalone_support.c -o $@
+
+${APIDIR}\obj\packet_queue.o:	ARC_API_Base\packet_queue.c \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\constants.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APIDIR}\packet_queue.c -o $@
+
+${APPDIR}\obj\ArcChannel_MPA.o:	.\ARCEncoder\ARC\ArcChannel_MPA.cpp \
+	.\ARCEncoder\ARC\ArcChannel_MPA.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\ARC\ArcChannel_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcSoftwareME_MPA.o:	.\ARCEncoder\ARC\ArcSoftwareME_MPA.cpp \
+	.\ARCEncoder\ARC\ArcSoftwareME_MPA.h
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcSoftwareME_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcSoftwareSubME_MPA.o:	.\ARCEncoder\ARC\ArcSoftwareSubME_MPA.cpp \
+	.\ARCEncoder\ARC\ArcSoftwareSubME_MPA.h
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcSoftwareSubME_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcLumaMP4SubPelFilter_MPA.o:	.\ARCEncoder\ARC\ArcLumaMP4SubPelFilter_MPA.cpp \
+	.\ARCEncoder\ARC\ArcLumaMP4SubPelFilter_MPA.h
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${BASEDIR}\${ENCDIR}\ARC\ArcLumaMP4SubPelFilter_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcEncoderAddSubtract_MPA.o:	\
+	.\ARCEncoder\MPEG4\ArcEncoderAddSubtract_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcEncoderAddSubtract_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcEncoderAddSubtract_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcEncoderMain_MPA.o:	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcEncoderMain_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\ARC\ArcFrameBuffers.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcEncoderMain_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcFDCT_MPA.o:	.\ARCEncoder\MPEG4\ArcFDCT_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcFDCT_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcFDCT_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcH263DeQuant_MPA.o:	.\ARCEncoder\MPEG4\ArcH263DeQuant_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcH263DeQuant_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcH263DeQuant_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcIDCT_MPA.o:	.\ARCEncoder\MPEG4\ArcIDCT_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcIDCT_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcIDCT_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcMP4ChromaFilter_MPA.o:	\
+	.\ARCEncoder\MPEG4\ArcMP4ChromaFilter_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcMP4ChromaFilter_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcMP4ChromaFilter_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcMP4DeQuant_MPA.o:	.\ARCEncoder\MPEG4\ArcMP4DeQuant_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcMP4DeQuant_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcMP4DeQuant_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcSDMTables_MPA.o:	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.cpp \
+	.\ARCEncoder\MPEG4\ArcSDMTables_MPA.h \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcSDMTables_MPA.cpp -o $@
+
+${APPDIR}\obj\ArcMp4IntraLumaPrediction_MPA.o:	\
+	.\ARCEncoder\MPEG4\ArcMp4IntraLumaPrediction_MPA.cpp \
+	.\ARCEncoder\ARC\ArcMPC.h .\ARCEncoder\ARC\typdef.h \
+	.\ARCEncoder\MPEG4\ArcMP4SDMTables.h \
+	.\ARCEncoder\ARC\ArcChannelRoutines.h \
+	.\ARCEncoder\ARC\ArcMotionEstimationModel.h \
+	.\ARCEncoder\ARC\EnumTypes.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARCEncoder\ARC\ArcMacroRecordSettings.h \
+	.\ARCEncoder\MPEG4\ArcMp4IntraLumaPrediction_MPA.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${ENCDIR}\MPEG4\ArcMp4IntraLumaPrediction_MPA.cpp -o $@
+
+#########################################################
+# Individual file build control for application files
+#########################################################
+
+${APPDIR}\obj\mpeg4_encoder_app.o: ARC_MPEG4_API\mpeg4_encoder_app.c \
+	.\ARC_API_Base\arc_enc_utils.h \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h \
+	.\ARC_MPEG4_API\mpeg4_interface.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\standalone_support.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}\mpeg4_encoder_app.c -o $@
+
+${APPDIR}\obj\ARC_ROM_VECTORS.o:	ARC_MPEG4_API\ARC_ROM_VECTORS.s \
+	.\ARC_API_Base\arc_enc_utils.h \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h \
+	.\ARC_MPEG4_API\mpeg4_interface.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\standalone_support.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}\ARC_ROM_VECTORS.s -o $@
+
+
+${APPDIR}\obj\serial_pl01x.o:	ARC_MPEG4_API\serial_pl01x.c \
+	.\ARC_API_Base\arc_enc_utils.h \
+	.\ARC_API_Base\arc_encoder.h \
+	.\ARC_API_Base\constants.h \
+	.\ARC_API_Base\packet_queue.h \
+	.\ARC_API_Base\arc_encoder_malloc.h \
+	.\ARC_MPEG4_API\mpeg4_interface.h \
+	.\ARCEncoder\MPEG4\MP4Encoder.h \
+	.\ARCEncoder\MPEG4\MP4ParameterSets.h \
+	.\ARCEncoder\ARC\defines.h \
+	.\ARC_API_Base\standalone_support.h 
+	${MCC_CC} ${OPT_FLAGS} ${INCLUDES} ${MCC_CC_FLAGS} -c ${APPDIR}\serial_pl01x.c -o $@
+
+
+
+#########################################################
+# Individual file build control for subproject files
+#########################################################
+
+
+#########################################################
+# End of Makefile
+#########################################################
+

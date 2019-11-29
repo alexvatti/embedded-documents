@@ -1,0 +1,44 @@
+
+#ifndef _ASM_ARCH_HARDWARE_H
+#define _ASM_ARCH_HARDWARE_H
+
+#define ZYNQ_SYS_CTRL_BASEADDR		0xF8000000
+#define ZYNQ_QSPI_BASEADDR		0xE000D000
+
+/* Reflect slcr offsets */
+struct slcr_regs {
+	u32 scl; /* 0x0 */
+	u32 slcr_lock; /* 0x4 */
+	u32 slcr_unlock; /* 0x8 */
+	u32 reserved0[75];
+	u32 gem0_rclk_ctrl; /* 0x138 */
+	u32 gem1_rclk_ctrl; /* 0x13c */
+	u32 gem0_clk_ctrl; /* 0x140 */
+	u32 gem1_clk_ctrl; /* 0x144 */
+	u32 reserved1[46];
+	u32 pss_rst_ctrl; /* 0x200 */
+	u32 reserved2[15];
+	u32 fpga_rst_ctrl; /* 0x240 */
+	u32 reserved3[5];
+	u32 reboot_status; /* 0x258 */
+	u32 boot_mode; /* 0x25c */
+	u32 reserved4[116];
+	u32 trust_zone; /* 0x430 */ /* FIXME */
+	u32 reserved5_1[63];
+	u32 pss_idcode; /* 0x530 */
+	u32 reserved5_2[51];
+	u32 ddr_urgent; /* 0x600 */
+	u32 reserved6[6];
+	u32 ddr_urgent_sel; /* 0x61c */
+	u32 reserved7[56];
+	u32 mio_pin[54]; /* 0x700 - 0x7D4 */
+	u32 reserved8[74];
+	u32 lvl_shftr_en; /* 0x900 */
+	u32 reserved9[3];
+	u32 ocm_cfg; /* 0x910 */
+};
+
+#define slcr_base ((struct slcr_regs *)ZYNQ_SYS_CTRL_BASEADDR)
+extern u32 zynq_slcr_get_idcode(void);
+extern int zynq_slcr_get_mio_pin_status(const char *periph);
+#endif /* _ASM_ARCH_HARDWARE_H */

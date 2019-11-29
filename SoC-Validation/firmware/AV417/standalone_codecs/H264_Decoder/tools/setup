@@ -1,0 +1,232 @@
+####################################################################
+#
+#
+#
+####################################################################
+
+:paths:
+	
+LIBDIR: H264DecoderLib
+APPDIR: H264DecoderApp
+
+ARCGCCDIR: /home/peters/bin/arc-gcc-20060612
+MWDIR: /apps/hcac/7.4.3.12/MetaWare/arc/
+LINUXDIR: /tmp/nodelete/peters/linux-2.4.29
+
+####################################################################
+#
+# tool setup
+#
+# NOTES: Only specify paths, executables and generic options here
+#        specific options (for types of build) come later
+#
+#
+####################################################################
+
+:tools:
+
+gnuarc: 
+	compiler) 	
+		name> arc-linux-uclibc-gcc
+		opt-all> -DH264_ACC_MODEL_BT -DD_UNIX -DUNIX -DNDEBUG -D_no_GENERATE_PROFILING_REPORT -DnoNO_PIXEL_OPERATION  -mA7 -D__ARC__ -mlong-calls
+		opt-rel> -O2 
+		opt-dbg> -g
+	linker)		
+		name> arc-linux-uclibc-gcc
+		opt-dbg> -g
+	archiver)	
+		name> arc-linux-uclibc-ar
+		opt-all> -cru
+	deps)		
+		name> arc-linux-uclibc-gcc
+		opt-all> -MM 
+
+gnupc: 
+	path) 	/usr/bin/
+	compiler) 	
+		name> gcc
+		opt-all> -c -DH264_ACC_MODEL_BT -DD_UNIX -DUNIX -DNDEBUG -D_no_GENERATE_PROFILING_REPORT -DnoNO_PIXEL_OPERATION -D__ARC__
+		opt-rel> -O2 
+		opt-dbg> -g
+	linker)		
+		name> gcc
+		opt-dbg> -g
+	archiver)	
+		name> ar
+		opt-all> -cru 
+	deps)		
+		name> gcc
+		opt-all> -MM 
+
+mcc:
+	compiler) 	
+		name> mcc
+		opt-all> -DH264_ACC_MODEL_BT -DD_UNIX -DUNIX -DNDEBUG -D_no_GENERATE_PROFILING_REPORT -DnoNO_PIXEL_OPERATION -D__ARC__ -arc700 -Hi -Hon=Long_enums -Xlib -Xnorm -Xswap -Xmpy  -Hon=Bool -w0 -Hsdata0  -Hinlfactor=900 -Hinlsize=260
+		opt-rel> -O6 
+		opt-dbg> -g
+	linker)		
+		name> mcc
+		opt-all> -arc700
+		opt-dbg> -g
+	archiver)	
+		name> arac
+		opt-all> -cru 
+	deps)		
+		name> mcc
+		opt-all> -Hsilent -Hrel -Hmake
+
+
+####################################################################
+#
+# Source file locations and groups
+#
+####################################################################
+
+:sources:
+
+basedir:   
+includes:  	${LIBDIR},${LIBDIR}/H264Decoder,${LIBDIR}/H264Common,${LIBDIR}/VideoCommon,${LIBDIR}/H264SIMDDec,${LIBDIR}/H264VLCDec,${APPDIR}/Benchmark
+filegroups:		
+        codec)  ${LIBDIR}: H264Decoder/%.cpp, H264Common/%.cpp, VideoCommon/%.cpp
+        simd)   ${LIBDIR}: H264SIMDDec/%.cpp
+	vlc)    ${LIBDIR}: H264VLCDec/%.c
+        utils)  ${LIBDIR}: memctl.c,arc_h264.c 
+        main)   ${APPDIR}: main.c, crc32.c, uncached_buf.c
+	benchmark)   ${APPDIR}: Benchmark/arc_benchmark.c
+        avatar)   ${APPDIR}: avatar.c , arc_net.c
+        network)   ${APPDIR}: arc_net.c
+
+	
+
+####################################################################
+#
+# Main build projects
+#
+####################################################################
+
+:builds:
+
+pcbuild:
+	type) bin
+        name) h264dec
+	toolchain) gnupc
+		files>	   codec, utils, main
+	libtoolchain) gnupc
+        libraries)
+		opt-lib> stdc++
+
+mccbuild:	
+	type) bin
+        name) h264dec
+	toolchain) mcc
+		files>	   codec, utils, main
+	libtoolchain) mcc
+		opt-all> h264.cmd -Hldopt=-Csections -Hldopt=-Coutput=h264.map
+
+gnubuild:
+	default)
+        name) h264dec
+	type) bin
+	toolchain) gnuarc
+		files>	   utils, main
+	toolchain) mcc
+		files>	   codec
+	libtoolchain) mcc
+		opt-all> -Hnocrt -z gnu -Hldopt=-Bdemandload -Hldopt=-Bpagesize=8192 -Hldopt=-Bgrouplib -B define:_start=__start -B define:___uClibc_main=__uClibc_main -B define:_uClibc_main=___uClibc_main 
+	libraries)
+		opt-lib> ${ARCGCCDIR}/arc-linux-uclibc/lib:crt0.o,crti.o,libc.a
+		opt-lib> ${ARCGCCDIR}/lib/gcc/arc-elf32/3.4.6/arc700/:libgcc.a
+		opt-lib> ${MWDIR}/lib/a7/le:libct.a,libmw.a
+		opt-lib> /home/peters/build/MW/cpp/archive/a7_p/lobj_o:libcct.a
+	
+
+####################################################################
+#
+# Project-independent options 
+#
+# Note: debug and release are also available, it is also valid
+#       to specify neither (i.e. default operation of the toolchain)
+#       but not both!
+#
+####################################################################
+
+:options:
+
+simd:
+	addfiles) 	
+		groups> simd
+		toolchain> mcc
+	addcflags)	-Xsimd -DAURORA_HW_SIM -DAURORA_XFORM  -DAURORA_SUBPEL -DAURORA_DMA -DAURORA_DEBLOCK -DAURORA_SUBPEL_MACROS 
+
+vlc:
+	addfiles)
+		groups> vlc
+		toolchain> mcc
+	addcflags)	-DCAVLC_HW_PRESENT
+
+bigcode:
+	addcflags)	-Mb 
+
+benchmark:
+	addfiles)
+		groups> benchmark
+		toolchain> mcc
+	addcflags)	-D__BENCHMARK__ 
+crc:
+	addfiles) 	
+	    groups> crc
+            toolchain> mcc
+	addcflags)	-DCRC_OUTPUT
+		
+network:
+	addfiles) 	
+		groups> network
+		toolchain> gnuarc
+	addcflags)	-D__ARC_NET__
+	
+mplayer_linux:
+	addcflags)	-D__ARC_SHARED_BUFFER__ -D__ARC_MPLAYER__ -D__ARC_LINUX__ -I${ARCGCCDIR}/arc-linux-uclibc/include -I${LINUXDIR}/include
+
+
+avatar_linux:
+	addfiles) 	
+		groups> avatar
+		toolchain> gnuarc
+	addcflags)	-DAVATAR -D__ARC_MPLAYER__ -D__ARC_LINUX__ 
+	
+cache_I32k_D32k:
+	addfiles) 	
+	    groups> crc
+            toolchain> mcc
+	addcflags)	-DI32K_D32K
+
+cache_I16k_D16k:
+	addfiles) 	
+	    groups> crc
+            toolchain> mcc
+	addcflags)	-DI16K_D16K
+
+cache_I16k_D8k:
+	addfiles) 	
+	    groups> crc
+            toolchain> mcc
+	addcflags)	-DI16K_D8K	
+
+cache_I8k_D8k:
+	addfiles) 	
+	    groups> crc
+            toolchain> mcc
+	addcflags)	-DI8K_D8K
+	
+use_timers:
+	addfiles) 	
+	    groups> crc
+            toolchain> mcc
+	addcflags)	-DUSE_ARC_TIMERS -D__USE_ARC_HOSTLIB__
+
+
+	
+:end:
+
+
+

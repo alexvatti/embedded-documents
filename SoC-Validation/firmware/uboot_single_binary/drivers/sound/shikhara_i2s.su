@@ -1,0 +1,5 @@
+shikhara_i2s.c:222:5:shikhara_i2s_tx_init	8	static
+shikhara_i2s.c:274:5:shikhara_i2s_transfer_tx_data	24	static
+shikhara_i2s.c:380:5:shikhara_i2s_record_rx_data	24	static
+shikhara_i2s.c:416:5:shikhara_i2s_beep	32	static
+shikhara_i2s.c:478:5:shikhara_i2s_sawtooth	40	static

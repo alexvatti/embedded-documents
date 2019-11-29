@@ -1,0 +1,2 @@
+cmd_arc_ipc.c:86:6:ipc_av417_handler	8	static
+cmd_arc_ipc.c:54:5:do_arcipc	8	static

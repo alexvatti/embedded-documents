@@ -1,0 +1,2 @@
+cmd_hdmi_dvi_min.c:45:12:do_hdmi	8	static
+cmd_hdmi_dvi_min.c:11:5:hdmi_post	8	static
