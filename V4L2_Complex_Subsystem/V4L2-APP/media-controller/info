@@ -1,0 +1,143 @@
+1.
+include/media/media-device.h
+#define media_device_register(mdev) __media_device_register(mdev, THIS_MODULE)
+
+2.
+drivers/media/media-device.c
+
+int __must_check __media_device_register(struct media_device *mdev,
+                                         struct module *owner)
+{
+        int ret;
+
+        if (WARN_ON(mdev->dev == NULL || mdev->model[0] == 0))
+                return -EINVAL;
+
+        mdev->entity_id = 1;
+        INIT_LIST_HEAD(&mdev->entities);
+        spin_lock_init(&mdev->lock);
+        mutex_init(&mdev->graph_mutex);
+
+        /* Register the device node. */
+        mdev->devnode.fops = &media_device_fops;
+        mdev->devnode.parent = mdev->dev;
+        mdev->devnode.release = media_device_release;
+        ret = media_devnode_register(&mdev->devnode, owner);
+        if (ret < 0)
+                return ret;
+
+        ret = device_create_file(&mdev->devnode.dev, &dev_attr_model);
+        if (ret < 0) {
+                media_devnode_unregister(&mdev->devnode);
+                return ret;
+        }
+
+        return 0;
+}
+EXPORT_SYMBOL_GPL(__media_device_register);
+
+
+3.
+include/media/media-device.h
+
+struct media_device {
+        /* dev->driver_data points to this struct. */
+        struct device *dev;
+        struct media_devnode devnode;
+
+        char model[32];
+        char serial[40];
+        char bus_info[32];
+        u32 hw_revision;
+        u32 driver_version;
+
+        u32 entity_id;
+        struct list_head entities;
+
+        /* Protects the entities list */
+        spinlock_t lock;
+        /* Serializes graph operations. */
+        struct mutex graph_mutex;
+
+        int (*link_notify)(struct media_link *link, u32 flags,
+                           unsigned int notification);
+};
+
+4.
+
+include/media/media-devnode.h
+
+struct media_devnode {
+        /* device ops */
+        const struct media_file_operations *fops;
+
+        /* sysfs */
+        struct device dev;              /* media device */
+        struct cdev cdev;               /* character device */
+        struct device *parent;          /* device parent */
+
+        /* device info */
+        int minor;
+        unsigned long flags;            /* Use bitops to access flags */
+
+        /* callbacks */
+        void (*release)(struct media_devnode *mdev);
+};
+
+
+int __must_check media_devnode_register(struct media_devnode *mdev,
+                                        struct module *owner);
+void media_devnode_unregister(struct media_devnode *mdev);
+
+5.
+drivers/media/media-devnode.c
+int __must_check media_devnode_register(struct media_devnode *mdev,
+                                        struct module *owner)
+{
+        int minor;
+        int ret;
+
+        /* Part 1: Find a free minor number */
+        mutex_lock(&media_devnode_lock);
+        minor = find_next_zero_bit(media_devnode_nums, MEDIA_NUM_DEVICES, 0);
+        if (minor == MEDIA_NUM_DEVICES) {
+                mutex_unlock(&media_devnode_lock);
+                pr_err("could not get a free minor\n");
+                return -ENFILE;
+        }
+
+        set_bit(minor, media_devnode_nums);
+        mutex_unlock(&media_devnode_lock);
+
+        mdev->minor = minor;
+
+        /* Part 2: Initialize and register the character device */
+        cdev_init(&mdev->cdev, &media_devnode_fops);
+        mdev->cdev.owner = owner;
+
+        ret = cdev_add(&mdev->cdev, MKDEV(MAJOR(media_dev_t), mdev->minor), 1);
+        if (ret < 0) {
+                pr_err("%s: cdev_add failed\n", __func__);
+                goto error;
+        }
+
+        /* Part 3: Register the media device */
+        mdev->dev.bus = &media_bus_type;
+        mdev->dev.devt = MKDEV(MAJOR(media_dev_t), mdev->minor);
+        mdev->dev.release = media_devnode_release;
+        if (mdev->parent)
+                mdev->dev.parent = mdev->parent;
+        dev_set_name(&mdev->dev, "media%d", mdev->minor);
+        ret = device_register(&mdev->dev);
+        if (ret < 0) {
+                pr_err("%s: device_register failed\n", __func__);
+                goto error;
+        }
+
+        /* Part 4: Activate this minor. The char device can now be used. */
+        set_bit(MEDIA_FLAG_REGISTERED, &mdev->flags);
+
+        return 0;
+}
+
+

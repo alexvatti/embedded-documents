@@ -1,0 +1,24 @@
+
+
+    If the source YUV buffer is a packed or planar buffer. Packed means that the YUV bits are grouped togheter, planar means the Y, U and V buffers are separated in 3 differents memory area.
+
+    YUV channel size; the single Y,U,V channel could be of 8-bit, 10-bit, 12-bit, etc
+
+    the sampling ratio; A:B:C. 4:2:2 means that you horizontally have 1 Y value for each pixels and one only U and V value shared between two neightboard pixels.
+
+
+
+Packed YUV Formats 
+HDYC
+(UYVY)	0x43594448	16	YUV 4:2:2 (Y sample at every pixel, U and V sampled at every second pixel horizontally on each line). A macropixel contains 2 pixels in 1 u_int32. This is a suplicate of UYVY except that the color components use the BT709 color space (as used in HD video).
+
+
+
+Planar YUV Formats:
+NV12	0x3231564E	12	8-bit Y plane followed by an interleaved U/V plane with 2x2 subsampling
+
+
+#define V4L2_PIX_FMT_NV12    v4l2_fourcc('N', 'V', '1', '2') /* 12 Y/CbCr 4:2:0  */
+#define V4L2_PIX_FMT_NV16    v4l2_fourcc('N', 'V', '1', '6') /* 16 Y/CbCr 4:2:2  */
+#define V4L2_PIX_FMT_NV24    v4l2_fourcc('N', 'V', '2', '4') /* 24 Y/CbCr 4:4:4  */
+
